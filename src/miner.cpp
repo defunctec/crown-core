@@ -438,6 +438,9 @@ CBlockTemplate* CreateNewBlock(const CScript& scriptPubKeyIn, CWallet* pwallet, 
         pblocktemplate->vTxSigOps[0] = GetLegacySigOpCount(pblock->vtx[0]);
         pblock->hashMerkleRoot = pblock->BuildMerkleTree();
 
+        // Print Block 
+        LogPrintf("CreateNewBlock() : \n %s \n", pblock->ToString());
+
         // Sign Block
         if (fProofOfStake) {
             pblock->SetProofOfStake(true);
