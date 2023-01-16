@@ -2444,7 +2444,14 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     {
         if (Params().NetworkID() != CBaseChainParams::TESTNET || pindex->nHeight > 371000)
         {
-            return false;
+            if (Params().NetworkID() == CBaseChainParams::MAIN &&
+                pindex->nHeight == 3376441 &&
+                pindex->GetBlockHash() == uint256S("0x4a7c0b7ddec80830b74bc772ed2d3f627e4bd77796eae793297d2dadfc494ced")) {
+                // do nothing
+                // This is a workaround to always accept block 3376441
+            }
+            else
+              return false;
         }
     }
 
