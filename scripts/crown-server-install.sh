@@ -7,7 +7,7 @@
 #
 # Setup crown server or update existing one
 
-LATEST_RELEASE="0.14.0.2"
+LATEST_RELEASE="0.14.0.3"
 
 systemnode=false
 masternode=false
@@ -210,7 +210,7 @@ download_package() {
     else
         # Pull the latest release version.
         echo "Downloading $BITS bit Crown package version $LATEST_RELEASE."
-        wget "https://github.com/Crowndev/crowncoin/releases/download/v$LATEST_RELEASE-Emerald/Crown-$LATEST_RELEASE-Linux$BITS.zip" -O $dir/crown.zip
+        wget "https://github.com/Crowndev/crown-core/releases/download/v$LATEST_RELEASE/Crown-$LATEST_RELEASE-Linux$BITS.zip" -O $dir/crown.zip
     fi
     wget "https://raw.githubusercontent.com/Crowndev/crowncoin/master/scripts/crownwatch.sh" -O $dir/crownwatch.sh
     if [ -s "$dir/crown.zip" ]; then
@@ -273,7 +273,10 @@ configure_conf() {
     fi
     echo "addnode=92.60.44.40" >>.crown/crown.conf
     echo "addnode=149.248.53.3" >>.crown/crown.conf
+    echo "addnode=167.179.102.132" >>.crown/crown.conf
     echo "addnode=139.180.141.215" >>.crown/crown.conf
+    echo "addnode=207.246.65.86" >>.crown/crown.conf
+    echo "maxconnections=16" >>.crown/crown.conf
     echo "This is the config file:"
     cat .crown/crown.conf
     echo
