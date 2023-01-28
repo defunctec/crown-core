@@ -289,7 +289,7 @@ configure_conf() {
     if [ "$logrotate" = true ] ; then
         sudo mv /etc/logrotate.d/crownlog.conf /etc/logrotate.d/crownlog.bak
         sudo touch /etc/logrotate.d/crownlog.conf
-        echo "/root/.crown/*.log {" | sudo tee -a /etc/logrotate.d/crownlog.conf
+        echo "$HOME/.crown/*.log {" | sudo tee -a /etc/logrotate.d/crownlog.conf
         echo "    weekly" | sudo tee -a /etc/logrotate.d/crownlog.conf
         echo "    rotate 3" | sudo tee -a /etc/logrotate.d/crownlog.conf
         echo "    size 80M" | sudo tee -a /etc/logrotate.d/crownlog.conf
