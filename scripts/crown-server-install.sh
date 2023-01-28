@@ -1,5 +1,5 @@
 #!/bin/bash
-# Copyright (c) 2018-2021 The Crown developers
+# Copyright (c) 2018-2023 The Crown developers
 # Distributed under the MIT/X11 software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -16,6 +16,8 @@ install=false
 unknown=()
 appname=$(basename "$0")
 watchdog=0
+logrotate=false
+bootstraplink="https://storage.crownplatform.com/s/5XgpC3fqk2F6qY7/download"
 
 print_help()
 {
@@ -30,6 +32,7 @@ Setup crown server or update existing one
   -w, --watchdog=level       enable watchdog (1=check running, 2=pre-emptive restart on low memory)
   -c, --wallet               create a wallet
   -b, --bootstrap            download bootstrap
+  -l, --logrotate            Set up a logrotation for the ,log files in .crown
   -h, --help                 display this help and exit
 
 "
@@ -95,6 +98,10 @@ handle_arguments()
                 ;;
             -b|-bootstrap)
                 bootstrap=true
+                shift
+                ;;
+	    -l|--logrotate)
+                logrotate=true
                 shift
                 ;;
 
@@ -217,7 +224,7 @@ download_package() {
         # Download bootstrap if requested
         if [ -n "$bootstrap" ]; then
             echo "Downloading bootstrap"
-            wget "https://storage.crownplatform.com/s/erB9Y95HkpA4Nmk/download" -O $dir/bootstrap.zip
+            wget "$bootstraplink" -O $dir/bootstrap.zip
 	    if [ ! -e "$dir/bootstrap.zip" ]; then
 	        echo "Failed to download bootstrap. Continuing without it."
 	        bootstrap=
@@ -279,9 +286,22 @@ configure_conf() {
     echo "maxconnections=16" >>.crown/crown.conf
     echo "This is the config file:"
     cat .crown/crown.conf
+    if [ "$logrotate" = true ] ; then
+        sudo mv /etc/logrotate.d/crownlog.conf /etc/logrotate.d/crownlog.bak
+        sudo touch /etc/logrotate.d/crownlog.conf
+        echo "/root/.crown/*.log {" | sudo tee -a /etc/logrotate.d/crownlog.conf
+        echo "    weekly" | sudo tee -a /etc/logrotate.d/crownlog.conf
+        echo "    rotate 3" | sudo tee -a /etc/logrotate.d/crownlog.conf
+        echo "    size 80M" | sudo tee -a /etc/logrotate.d/crownlog.conf
+        echo "    compress" | sudo tee -a /etc/logrotate.d/crownlog.conf
+        echo "    delaycompress" | sudo tee -a /etc/logrotate
+	echo "}" | sudo tee -a /etc/logrotate.d/crownlog.conf
+	echo "This is the current setup of the logrotation, edit if you wish in /etc/logrotate.d/crownlog.conf"
+	sudo cat /etc/logrotate.d/crownlog.conf
+	fi
     echo
     echo "==============================================================================="
-}
+
 
 configure_firewall() {
     echo
@@ -378,6 +398,14 @@ main() {
     grep "Crown version" ~/.crown/debug.log | tail -1
     echo
     # Ensure there is a cron job to restart crownd on reboot and run watchdog
+    echo "Please use the following command to check the status of the Crown service: 'crown-cli getinfo'"
+    if [ "$masternode" = true ] ; then
+    echo "Please use the following command to check the status of the masternode: 'crown-cli masternode status'"
+    fi
+    if [ "$systemnode" = true ] ; then
+    echo "Please use the following command to check the status of the masternode: 'crown-cli systemnode status'"
+    fi
+    echo "Thank you for using the Crown server installation script!"
     add_cron_job
 }
 
