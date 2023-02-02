@@ -248,7 +248,7 @@ install_package() {
     sudo cp -f $dir/crownwatch.sh /usr/local/bin
     if [ -n "$bootstrap" ]; then
 	    echo "Unzipping bootstrap (which will take a few minutes) and removing old blockchain"
-	rm -rf ~/.crown/{blocks,chainstate,bootstrap.dat.old}
+	rm -rf ~/.crown/{blocks,chainstate,platform,bootstrap.dat.old}
         unzip -od ~/.crown $dir/bootstrap.zip
     fi
     sudo rm -rf $dir
@@ -301,6 +301,7 @@ configure_conf() {
 	fi
     echo
     echo "==============================================================================="
+}
 
 
 configure_firewall() {
@@ -398,6 +399,9 @@ main() {
     grep "Crown version" ~/.crown/debug.log | tail -1
     echo
     # Ensure there is a cron job to restart crownd on reboot and run watchdog
+    add_cron_job
+
+    # Final messages
     echo "Please use the following command to check the status of the Crown service: 'crown-cli getinfo'"
     if [ "$masternode" = true ] ; then
     echo "Please use the following command to check the status of the masternode: 'crown-cli masternode status'"
@@ -406,7 +410,6 @@ main() {
     echo "Please use the following command to check the status of the masternode: 'crown-cli systemnode status'"
     fi
     echo "Thank you for using the Crown server installation script!"
-    add_cron_job
 }
 
 handle_arguments "$@"
