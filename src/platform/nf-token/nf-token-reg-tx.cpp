@@ -15,18 +15,25 @@
 
 namespace Platform
 {
-    bool NfTokenRegTx::CheckTx(const CTransaction& tx, const CBlockIndex* pindexLast, CValidationState& state)
+    bool NfTokenRegTx::CheckTx(const CTransaction& tx, const CBlockIndex* pindexLast, CValidationState& state, const CBlock* pCurrentBlock)
     {
         AssertLockHeld(cs_main);
 
         NfTokenRegTx nfTokenRegTx;
+         
         if (!GetTxPayload(tx, nfTokenRegTx))
+        {
+            LogPrintf("NfTokenRegTx::CheckTx: Can't get tx payload\n");
             return state.DoS(100, false, REJECT_INVALID, "bad-tx-payload");
+        }
 
         const NfToken & nfToken = nfTokenRegTx.GetNfToken();
 
-        if (nfTokenRegTx.m_version != NfTokenRegTx::CURRENT_VERSION)
+        if (nfTokenRegTx.m_version != NfTokenRegTx::CURRENT_VERSION) 
+        {
+             LogPrintf("NfTokenRegTx::CheckTx: Bad nf token reg tx version\n");
             return state.DoS(100, false, REJECT_INVALID, "bad-nf-token-reg-tx-version");
+        }
 
         bool containsProto;
         if (pindexLast != nullptr)
@@ -34,16 +41,24 @@ namespace Platform
         else
             containsProto = NftProtocolsManager::Instance().Contains(nfToken.tokenProtocolId);
 
-        if (!containsProto)
-            return state.DoS(10, false, REJECT_INVALID, "bad-nf-token-reg-tx-unknown-token-protocol");
+        if (!containsProto) 
+            {
+                LogPrintf("NfTokenRegTx::CheckTx: Unknown token protocol\n");
+                return state.DoS(10, false, REJECT_INVALID, "bad-nf-token-reg-tx-unknown-token-protocol");
+            }
+            
 
         auto nftProtoIndex = NftProtocolsManager::Instance().GetNftProtoIndex(nfToken.tokenProtocolId);
 
         if (pindexLast != nullptr)
         {
             int protoDepth = pindexLast->nHeight - nftProtoIndex.BlockIndex()->nHeight;
-            if (protoDepth < TX_CONFIRMATIONS_NUM)
+            if (protoDepth < TX_CONFIRMATIONS_NUM)  
+            {
+                LogPrintf("NfTokenRegTx::CheckTx: Token protocol is immature\n");
                 return state.DoS(10, false, REJECT_INVALID, "bad-nf-token-reg-tx-nft-proto-immature");
+            }
+                
         }
 
         CKeyID signerKeyId;
@@ -57,8 +72,9 @@ namespace Platform
             break;
         case SignPayer:
         {
-            if (!GetPayerPubKeyIdForNftTx(tx, signerKeyId))
+            if (!GetPayerPubKeyIdForNftTx(tx, signerKeyId, pCurrentBlock ))
             {
+                LogPrintf("NfTokenRegTx::CheckTx: Can't get payer key for tx: %s\n", tx.GetHash().ToString());
                 return state.DoS(10, false, REJECT_INVALID, "bad-nf-token-reg-tx-cant-get-payer-key");
             }
             break;
@@ -67,41 +83,71 @@ namespace Platform
             return state.DoS(10, false, REJECT_INVALID, "bad-nf-token-reg-tx-unknown-nft-reg-sign");
         }
 
-        if (nfToken.tokenId.IsNull())
+        if (nfToken.tokenId.IsNull())   
+        {
+            LogPrintf("NfTokenRegTx::CheckTx: token id is null\n");
             return state.DoS(10, false, REJECT_INVALID, "bad-nf-token-reg-tx-token");
+        }
+            
 
-        if (nfToken.tokenOwnerKeyId.IsNull())
+        if (nfToken.tokenOwnerKeyId.IsNull())   
+        {
+            LogPrintf("NfTokenRegTx::CheckTx: token owner key id is null\n");
             return state.DoS(10, false, REJECT_INVALID, "bad-nf-token-reg-tx-owner-key-null");
+        }
+            
 
         if (nfToken.metadataAdminKeyId.IsNull())
+        {
+            LogPrintf("NfTokenRegTx::CheckTx: token metadata admin key id is null\n");
             return state.DoS(10, false, REJECT_INVALID, "bad-nf-token-reg-tx-metadata-admin-key-null");
+        }
+           
 
         if (nfToken.metadata.size() > nftProtoIndex.NftProtoPtr()->maxMetadataSize)
+        {
+            LogPrintf("NfTokenRegTx::CheckTx: token metadata is too long\n");
             return state.DoS(10, false, REJECT_INVALID, "bad-nf-token-reg-tx-metadata-is-too-long");
+        }
+            
 
         if (pindexLast != nullptr)
         {
             if (NfTokensManager::Instance().Contains(nfToken.tokenProtocolId, nfToken.tokenId, pindexLast->nHeight))
+            {
+                 LogPrintf("NfTokenRegTx::CheckTx: bad-nf-token-reg-tx-dup-token\n");
                 return state.DoS(10, false, REJECT_DUPLICATE, "bad-nf-token-reg-tx-dup-token");
+            }
+               
         }
 
         if (!CheckInputsHashAndSig(tx, nfTokenRegTx, signerKeyId, state))
+        {
+            LogPrintf("NfTokenRegTx::CheckTx: bad-nf-token-reg-tx-invalid-signature\n");
             return state.DoS(50, false, REJECT_INVALID, "bad-nf-token-reg-tx-invalid-signature");
-
+        }
+             
+        LogPrintf("NfTokenRegTx::CheckTx: valid tx: %s\n", tx.GetHash().ToString());    
         return true;
     }
+
 
     bool NfTokenRegTx::ProcessTx(const CTransaction &tx, const CBlockIndex *pindex, CValidationState &state)
     {
         NfTokenRegTx nfTokenRegTx;
         bool result = GetTxPayload(tx, nfTokenRegTx);
+
         // should have been checked already
         assert(result);
 
         auto nfToken = nfTokenRegTx.GetNfToken();
 
         if (!NfTokensManager::Instance().AddNfToken(nfToken, tx, pindex))
-            return state.DoS(100, false, REJECT_DUPLICATE/*TODO: REJECT_CONFLICT*/, "token-reg-tx-conflict");
+        {
+             LogPrintf("NfTokenRegTx::ProcessTx: token-reg-tx-conflict/\n");  
+             return state.DoS(100, false, REJECT_DUPLICATE/*TODO: REJECT_CONFLICT*/, "token-reg-tx-conflict");
+        }
+           
         return true;
     }
 

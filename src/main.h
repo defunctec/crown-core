@@ -239,6 +239,9 @@ bool GetTransaction(const uint256 &hash, CTransaction &tx, uint256 &hashBlock, b
 
 bool DisconnectBlocksAndReprocess(int blocks);
 
+/** Iterates through the transactions in the input block and checks if any of them has the same hash as the provided transaction hash */
+bool FindTransactionInBlock(const CBlock& block, const uint256& txToFind, CTransaction &tx);
+
 // ***TODO***
 double ConvertBitsToDouble(unsigned int nBits);
 int64_t GetMasternodePayment(int nHeight, int64_t blockValue);

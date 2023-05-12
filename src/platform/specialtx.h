@@ -22,7 +22,7 @@ class CValidationState;
 
 namespace Platform
 {
-    bool CheckSpecialTx(const CTransaction& tx, const CBlockIndex* pindex, CValidationState& state);
+    bool CheckSpecialTx(const CTransaction& tx, const CBlockIndex* pindex, CValidationState& state, const CBlock* pCurrentBlock = nullptr);
     bool ProcessSpecialTxsInBlock(bool justCheck, const CBlock& block, const CBlockIndex* pindex, CValidationState& state);
     bool UndoSpecialTxsInBlock(const CBlock& block, const CBlockIndex* pindex);
     void UpdateSpecialTxsBlockTip(const CBlockIndex* pindex);

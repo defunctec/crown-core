@@ -19,7 +19,7 @@
 
 namespace Platform
 {
-    bool CheckSpecialTx(const CTransaction& tx, const CBlockIndex* pindexLast, CValidationState& state)
+    bool CheckSpecialTx(const CTransaction& tx, const CBlockIndex* pindexLast, CValidationState& state,  const CBlock* pCurrentBlock)
     {
         if (tx.nVersion < 3 || tx.nType == TRANSACTION_NORMAL)
             return true;
@@ -29,7 +29,7 @@ namespace Platform
                 return CheckVoteTx(tx, pindexLast, state);
 
             case TRANSACTION_NF_TOKEN_REGISTER:
-                return Platform::NfTokenRegTx::CheckTx(tx, pindexLast, state);
+                return Platform::NfTokenRegTx::CheckTx(tx, pindexLast, state, pCurrentBlock);
 
             case TRANSACTION_NF_TOKEN_PROTOCOL_REGISTER:
                 return Platform::NfTokenProtocolRegTx::CheckTx(tx, pindexLast, state);
@@ -86,7 +86,7 @@ namespace Platform
     {
         for (int i = 0; i < (int) block.vtx.size(); i++) {
             const CTransaction &tx = block.vtx[i];
-            if (!CheckSpecialTx(tx, pindex, state))
+            if (!CheckSpecialTx(tx, pindex, state, &block))
                 return false;
             if (!ProcessSpecialTx(justCheck, tx, pindex, state))
                 return false;

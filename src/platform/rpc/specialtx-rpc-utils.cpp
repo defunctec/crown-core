@@ -107,7 +107,7 @@ namespace Platform
         return false;
     }
 
-    bool GetPayerPubKeyIdForNftTx(const CMutableTransaction & tx, CKeyID & payerKeyId)
+    bool GetPayerPubKeyIdForNftTx(const CMutableTransaction & tx, CKeyID & payerKeyId, const CBlock* pCurrentBlock)
     {
         if (tx.vin.empty())
             return false;
@@ -115,7 +115,16 @@ namespace Platform
         uint256 hashBlockFrom;
         CTransaction txFrom;
         if (!GetTransaction(tx.vin[0].prevout.hash, txFrom, hashBlockFrom, true))
-            return false;
+        {
+            if (pCurrentBlock == nullptr) {
+                return false;
+            }
+            if(!FindTransactionInBlock(*pCurrentBlock, tx.vin[0].prevout.hash, txFrom))
+            {
+                return false;
+            }
+        }
+            
 
         auto txFromOutIdx = tx.vin[0].prevout.n;
         assert(txFromOutIdx < txFrom.vout.size());
@@ -126,7 +135,6 @@ namespace Platform
             CBitcoinAddress payerAddress(payer);
             return payerAddress.GetKeyID(payerKeyId);
         }
-
         return false;
     }
 }

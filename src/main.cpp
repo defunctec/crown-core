@@ -1550,7 +1550,17 @@ bool GetTransaction(const uint256 &hash, CTransaction &txOut, uint256& hashBlock
 }
 
 
-
+bool FindTransactionInBlock(const CBlock& block, const uint256& txToFind, CTransaction &tx)
+{
+    for (int i = 0; i < (int) block.vtx.size(); i++) {
+        const CTransaction &txi = block.vtx[i];
+        if (txi.GetHash() == txToFind) {
+            tx = txi;
+            return true;
+        }
+    }
+    return false;
+}
 
 
 
