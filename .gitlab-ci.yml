@@ -5,7 +5,7 @@ variables:
   GIT_STRATEGY: "clone"
   MAKEJOBS: "-j4"
   CCACHE_SIZE: "100M"
-  CROWN_CONFIG_ALL: "--disable-reduced-exports --disable-dependency-tracking --prefix=$CI_PROJECT_DIR/depends/$HOST --bindir=$CI_PROJECT_DIR/$OUTDIR/bin --libdir=$CI_PROJECT_DIR/$OUTDIR/lib --enable-debug"
+  CROWN_CONFIG_ALL: "--disable-reduced-exports --disable-dependency-tracking --prefix=$CI_PROJECT_DIR/depends/$HOST --bindir=$CI_PROJECT_DIR/$OUTDIR/bin --libdir=$CI_PROJECT_DIR/$OUTDIR/lib"
   SDK_URL: "https://bitcoincore.org/depends-sources/sdks"
   WINEDEBUG: "fixme-all"
 
@@ -23,28 +23,16 @@ cache:
     - mkdir -p depends/SDKs depends/sdk-sources out
     - if [ -n "$OSX_SDK" -a ! -f depends/sdk-sources/MacOSX${OSX_SDK}.sdk.tar.gz ]; then curl --location --fail $SDK_URL/MacOSX${OSX_SDK}.sdk.tar.gz -o depends/sdk-sources/MacOSX${OSX_SDK}.sdk.tar.gz; fi
     - if [ -n "$OSX_SDK" -a -f depends/sdk-sources/MacOSX${OSX_SDK}.sdk.tar.gz ]; then tar -C depends/SDKs -xf depends/sdk-sources/MacOSX${OSX_SDK}.sdk.tar.gz; fi
-    #- wget https://bootstrap.pypa.io/pip/2.7/get-pip.py
-    #- python2.7 get-pip.py
-    #- pip install setuptools
-    #- wget $LEVELDB_URL
-    #- tar -xf $LEVELDB_NAME
-    #- cd ./$LEVELDB_NAME_DIR/ && python2 ./setup.py install && cd ..
-    #- which leveldb
-    - make $MAKEJOBS -C depends HOST=$HOST $DEP_OPTS > /dev/null 2>&1
+    - make $MAKEJOBS -C depends HOST=$HOST $DEP_OPTS
   script:
-    - echo $CI_PROJECT_DIR
     - ./autogen.sh
-    #- mkdir build && cd build
-    - ./configure --cache-file=config.cache $CROWN_CONFIG_ALL $CROWN_CONFIG
-    - echo $MAKE
-    #- cp -r ../src ./src
-    - make VERSION=$HOST $MAKEJOBS $GOAL || ( echo "Build failure. Verbose build follows." && make $GOAL V=1 ; false ) 
-    - pwd
-    - ls -alF
-    #- cd ./crown-$HOST
-    #- ./configure --cache-file=../config.cache $CROWN_CONFIG_ALL $CROWN_CONFIG
-    #- make $MAKEJOBS $GOAL || ( echo "Build failure. Verbose build follows." && make $GOAL V=1 ; false )
-    #- if [ -n "$DMG" ]; then cp Crown-Qt.dmg ../../Crown-Qt.dmg; fi
+    - mkdir build && cd build
+    - ../configure --cache-file=config.cache $CROWN_CONFIG_ALL $CROWN_CONFIG
+    - make distdir VERSION=$HOST
+    - cd crown-$HOST
+    - ./configure --cache-file=../config.cache $CROWN_CONFIG_ALL $CROWN_CONFIG
+    - make $MAKEJOBS $GOAL || ( echo "Build failure. Verbose build follows." && make $GOAL V=1 ; false )
+    - if [ -n "$DMG" ]; then cp Crown-Qt.dmg ../../Crown-Qt.dmg; fi
 
 .job_template: &win64_definition
   tags:
@@ -52,7 +40,7 @@ cache:
   variables:
     CROWN_CONFIG: "--enable-mingw"
     HOST: "x86_64-w64-mingw32"
-    GOAL: "install src/crownd"
+    GOAL: "install"
     OUTDIR: "Crown-${RELEASE_VERSION}-Win64"
     PACKAGES: "make curl ca-certificates bzip2 libc6-dev gobjc++ g++ pkg-config patch autoconf automake libtool bsdmainutils libleveldb-dev wget python3-dev libsnappy-dev nsis gcc-mingw-w64-x86-64 g++-mingw-w64-x86-64 binutils-mingw-w64-x86-64 wine bc"
 
@@ -135,11 +123,18 @@ cache:
     paths:
     - $OUTDIR
     expire_in: 2 weeks
+  except:
+    - master
+    - tags
+
 .job_template: &dmg_release_definition
   artifacts:
     name: "$OUTDIR-dmg"
     paths:
     - Crown-Qt.dmg
+  only:
+    - master
+    - tags
 
 .job_template: &dmg_snapshot_definition
   artifacts:
@@ -147,33 +142,9 @@ cache:
     paths:
     - Crown-Qt.dmg
     expire_in: 2 weeks
-
-# Artifact settings for releases and snapshots
-.job_template: &release_definition
-  artifacts:
-    name: "$OUTDIR"
-    paths:
-    - $CI_PROJECT_DIR/$OUTDIR/bin
-
-.job_template: &snapshot_definition
-  artifacts:
-    name: "$OUTDIR"
-    paths:
-    - $OUTDIR
-    expire_in: 2 weeks
-
-.job_template: &dmg_release_definition
-  artifacts:
-    name: "$OUTDIR-dmg"
-    paths:
-    - Crown-Qt.dmg
-
-.job_template: &dmg_snapshot_definition
-  artifacts:
-    name: "$OUTDIR-dmg"
-    paths:
-    - Crown-Qt.dmg
-    expire_in: 2 weeks
+  except:
+    - master
+    - tags
 
 # Job definitions for releases
 Win64:
