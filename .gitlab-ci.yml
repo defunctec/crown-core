@@ -42,11 +42,7 @@ cache:
     HOST: "x86_64-w64-mingw32"
     GOAL: "install"
     OUTDIR: "Crown-${RELEASE_VERSION}-Win64"
-<<<<<<< HEAD
     PACKAGES: "make curl ca-certificates bzip2 libc6-dev gobjc++ g++ pkg-config patch autoconf automake libtool bsdmainutils libleveldb-dev wget python3-dev libsnappy-dev nsis gcc-mingw-w64-x86-64 g++-mingw-w64-x86-64 binutils-mingw-w64-x86-64 wine bc"
-=======
-    PACKAGES: "make curl ca-certificates bzip2 libc6-dev gobjc++ g++ pkg-config python2 patch autoconf automake libtool bsdmainutils libleveldb-dev wget python2-dev python3-dev libsnappy-dev nsis gcc-mingw-w64-x86-64 g++-mingw-w64-x86-64 binutils-mingw-w64-x86-64 wine bc"
->>>>>>> eb7fc6152 (Update .gitlab-ci.yml more depends win64)
 
 .job_template: &win32_definition
   tags:
