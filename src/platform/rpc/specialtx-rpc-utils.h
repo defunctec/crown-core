@@ -21,7 +21,7 @@ namespace Platform
     CKeyID ParsePubKeyIDFromAddress(const std::string & strAddress, const std::string & paramName);
 
     bool GetPayerPrivKeyForNftTx(const CMutableTransaction & tx, CKey & payerKey);
-    bool GetPayerPubKeyIdForNftTx(const CMutableTransaction & tx, CKeyID & payerKeyId);
+    bool GetPayerPubKeyIdForNftTx(const CMutableTransaction & tx, CKeyID & payerKeyId, const CBlock* pCurrentBlock = nullptr);
 }
 
 #endif // CROWN_SPECIALTX_RPC_UTILS_H

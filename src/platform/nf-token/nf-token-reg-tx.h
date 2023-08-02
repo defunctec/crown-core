@@ -36,7 +36,7 @@ namespace Platform
         std::string ToString() const;
         void ToJson(json_spirit::Object & result) const;
 
-        static bool CheckTx(const CTransaction & tx, const CBlockIndex * pindexLast, CValidationState & state);
+        static bool CheckTx(const CTransaction & tx, const CBlockIndex * pindexLast, CValidationState & state, const CBlock* pCurrentBlock = nullptr);
         static bool ProcessTx(const CTransaction & tx, const CBlockIndex * pindex, CValidationState & state);
         static bool UndoTx(const CTransaction & tx, const CBlockIndex * pindex);
 
