@@ -8,13 +8,19 @@
 #include "main.h"
 #include "db.h"
 #include "init.h"
-#include "activemasternode.h"
+#include "net.h"
+#include "masternodeconfig.h"
+#include "masternode.h"
 #include "masternodeman.h"
 #include "masternode-payments.h"
 #include "masternode-budget.h"
-#include "masternodeconfig.h"
+#include "activemasternode.h"
 #include "rpcserver.h"
 #include "utilmoneystr.h"
+#include "wallet.h"
+#include "key.h"
+#include "base58.h"
+#include "netbase.h"
 
 #include <fstream>
 using namespace json_spirit;
@@ -109,6 +115,7 @@ Value masternode(const Array& params, bool fHelp)
                 "\nAvailable commands:\n"
                 "  count        - Print number of all known masternodes (optional: 'ls', 'enabled', 'all', 'qualify')\n"
                 "  current      - Print info on current masternode winner\n"
+                "  connect      - Test the connection to a Systemnode using node collateral address\n"
                 "  debug        - Print masternode status\n"
                 "  enforce      - Enforce masternode payments\n"
                 "  outputs      - Print masternode compatible outputs\n"
@@ -133,23 +140,30 @@ Value masternode(const Array& params, bool fHelp)
         return "Show budgets";
     }
 
-    if(strCommand == "connect")
+    if (strCommand == "connect")
     {
         std::string strAddress = "";
-        if (params.size() == 2){
+        if (params.size() == 2) {
             strAddress = params[1].get_str();
         } else {
             throw runtime_error("Masternode address required\n");
         }
 
-        CService addr = CService(strAddress);
+        CService addr;
+        try {
+            addr = CService(strAddress);
+        } catch (const std::exception &e) {
+            throw runtime_error("Invalid address format: " + std::string(e.what()) + "\n");
+        } catch (...) {
+            throw runtime_error("An unknown error occurred while parsing the address\n");
+        }
 
         CNode *pnode = ConnectNode((CAddress)addr, NULL, false);
-        if(pnode){
+        if (pnode) {
             pnode->Release();
-            return "successfully connected";
+            return "Successfully connected to " + addr.ToString();
         } else {
-            throw runtime_error("error connecting\n");
+            throw runtime_error("Error connecting to " + addr.ToString() + "\n");
         }
     }
 
@@ -217,19 +231,27 @@ Value masternode(const Array& params, bool fHelp)
 
     if (strCommand == "start")
     {
-        if(!fMasterNode) throw runtime_error("you must set masternode=1 in the configuration\n");
+        if (!fSystemNode) throw runtime_error("you must set systemnode=1 in the configuration\n");
 
         {
             LOCK(pwalletMain->cs_wallet);
             EnsureWalletIsUnlocked();
         }
 
-        if(activeMasternode.status != ACTIVE_MASTERNODE_STARTED){
-            activeMasternode.status = ACTIVE_MASTERNODE_INITIAL; // TODO: consider better way
-            activeMasternode.ManageStatus();
+        // Get the IP address of the active systemnode
+        CService addr = activeSystemnode.service;
+
+        // Check if the IP address is already in use by another systemnode
+        if (snodeman.IsAddressInUse(addr)) {
+            throw runtime_error("IP address is already in use by another systemnode");
         }
 
-        return activeMasternode.GetStatus();
+        if (activeSystemnode.status != ACTIVE_SYSTEMNODE_STARTED) {
+            activeSystemnode.status = ACTIVE_SYSTEMNODE_INITIAL; // TODO: consider better way
+            activeSystemnode.ManageStatus();
+        }
+
+        return activeSystemnode.GetStatus();
     }
 
     if (strCommand == "start-alias")
@@ -255,6 +277,15 @@ Value masternode(const Array& params, bool fHelp)
                 found = true;
                 std::string errorMessage;
                 CMasternodeBroadcast mnb;
+                
+                // Check if the IP address is already in use by another masternode
+                CService addr(mne.getIp());
+
+                if (mnodeman.IsAddressInUse(addr)) {
+                    statusObj.push_back(Pair("result", "failed"));
+                    statusObj.push_back(Pair("errorMessage", "IP address is already in use by another masternode."));
+                    break;
+                }
 
                 bool result = CMasternodeBroadcast::Create(mne.getIp(), mne.getPrivKey(), mne.getTxHash(), mne.getOutputIndex(), errorMessage, mnb);
 
@@ -278,62 +309,75 @@ Value masternode(const Array& params, bool fHelp)
 
     }
 
-    if (strCommand == "start-many" || strCommand == "start-all" || strCommand == "start-missing" || strCommand == "start-disabled")
+if (strCommand == "start-many" || strCommand == "start-all" || strCommand == "start-missing" || strCommand == "start-disabled")
+{
+
     {
+        LOCK(pwalletMain->cs_wallet);
+        EnsureWalletIsUnlocked();
+    }
 
-        {
-            LOCK(pwalletMain->cs_wallet);
-            EnsureWalletIsUnlocked();
-        }
-
-        if((strCommand == "start-missing" || strCommand == "start-disabled") &&
+    if ((strCommand == "start-missing" || strCommand == "start-disabled") &&
          (masternodeSync.RequestedMasternodeAssets <= MASTERNODE_SYNC_LIST ||
           masternodeSync.RequestedMasternodeAssets == MASTERNODE_SYNC_FAILED)) {
-            throw runtime_error("You can't use this command until masternode list is synced\n");
-        }
+        throw runtime_error("You can't use this command until masternode list is synced\n");
+    }
 
-        std::vector<CNodeEntry> mnEntries;
-        mnEntries = masternodeConfig.getEntries();
+    std::vector<CNodeEntry> mnEntries;
+    mnEntries = masternodeConfig.getEntries();
 
-        int successful = 0;
-        int failed = 0;
+    int successful = 0;
+    int failed = 0;
 
-        Object resultsObj;
+    Object resultsObj;
 
-        BOOST_FOREACH(CNodeEntry mne, masternodeConfig.getEntries()) {
-            std::string errorMessage;
+    BOOST_FOREACH(CNodeEntry mne, masternodeConfig.getEntries()) {
+        std::string errorMessage;
 
-            CTxIn vin = CTxIn(uint256S(mne.getTxHash()), uint32_t(atoi(mne.getOutputIndex().c_str())));
-            CMasternode *pmn = mnodeman.Find(vin);
-            CMasternodeBroadcast mnb;
+        CTxIn vin = CTxIn(uint256S(mne.getTxHash()), uint32_t(atoi(mne.getOutputIndex().c_str())));
+        CMasternode *pmn = mnodeman.Find(vin);
+        CMasternodeBroadcast mnb;
 
-            if(strCommand == "start-missing" && pmn) continue;
-            if(strCommand == "start-disabled" && pmn && pmn->IsEnabled()) continue;
+        if (strCommand == "start-missing" && pmn) continue;
+        if (strCommand == "start-disabled" && pmn && pmn->IsEnabled()) continue;
 
-            bool result = CMasternodeBroadcast::Create(mne.getIp(), mne.getPrivKey(), mne.getTxHash(), mne.getOutputIndex(), errorMessage, mnb);
-
+        // Check if the IP address is already in use by another masternode
+        CService addr(mne.getIp());
+        if (mnodeman.IsAddressInUse(addr)) {
+            failed++;
             Object statusObj;
             statusObj.push_back(Pair("alias", mne.getAlias()));
-            statusObj.push_back(Pair("result", result ? "successful" : "failed"));
-
-            if(result) {
-                successful++;
-                mnodeman.UpdateMasternodeList(mnb);
-                mnb.Relay();
-            } else {
-                failed++;
-                statusObj.push_back(Pair("errorMessage", errorMessage));
-            }
-
+            statusObj.push_back(Pair("result", "failed"));
+            statusObj.push_back(Pair("errorMessage", "IP address is already in use by another masternode."));
             resultsObj.push_back(Pair("status", statusObj));
+            continue; // Skip to the next entry
         }
 
-        Object returnObj;
-        returnObj.push_back(Pair("overall", strprintf("Successfully started %d masternodes, failed to start %d, total %d", successful, failed, successful + failed)));
-        returnObj.push_back(Pair("detail", resultsObj));
+        bool result = CMasternodeBroadcast::Create(mne.getIp(), mne.getPrivKey(), mne.getTxHash(), mne.getOutputIndex(), errorMessage, mnb);
 
-        return returnObj;
+        Object statusObj;
+        statusObj.push_back(Pair("alias", mne.getAlias()));
+        statusObj.push_back(Pair("result", result ? "successful" : "failed"));
+
+        if (result) {
+            successful++;
+            mnodeman.UpdateMasternodeList(mnb);
+            mnb.Relay();
+        } else {
+            failed++;
+            statusObj.push_back(Pair("errorMessage", errorMessage));
+        }
+
+        resultsObj.push_back(Pair("status", statusObj));
     }
+
+    Object returnObj;
+    returnObj.push_back(Pair("overall", strprintf("Successfully started %d masternodes, failed to start %d, total %d", successful, failed, successful + failed)));
+    returnObj.push_back(Pair("detail", resultsObj));
+
+    return returnObj;
+}
+
 
     if (strCommand == "create")
     {
@@ -637,15 +681,25 @@ Value masternodebroadcast(const Array& params, bool fHelp)
         statusObj.push_back(Pair("alias", alias));
 
         BOOST_FOREACH(CNodeEntry mne, masternodeConfig.getEntries()) {
-            if(mne.getAlias() == alias) {
+            if (mne.getAlias() == alias) {
                 found = true;
                 std::string errorMessage;
                 CMasternodeBroadcast mnb;
 
+                // Extract the IP address from the configuration
+                CService addr(mne.getIp());
+
+                // Check if the IP address is already in use by another masternode
+                if (mnodeman.IsAddressInUse(addr)) {
+                    statusObj.push_back(Pair("result", "failed"));
+                    statusObj.push_back(Pair("errorMessage", "IP address is already in use by another masternode."));
+                    break; // Exit the loop as we found a conflict
+                }
+
                 bool result = CMasternodeBroadcast::Create(mne.getIp(), mne.getPrivKey(), mne.getTxHash(), mne.getOutputIndex(), errorMessage, mnb, true);
 
                 statusObj.push_back(Pair("result", result ? "successful" : "failed"));
-                if(result) {
+                if (result) {
                     vecMnb.push_back(mnb);
                     CDataStream ssVecMnb(SER_NETWORK, PROTOCOL_VERSION);
                     ssVecMnb << vecMnb;
@@ -657,13 +711,12 @@ Value masternodebroadcast(const Array& params, bool fHelp)
             }
         }
 
-        if(!found) {
-            statusObj.push_back(Pair("result", "not found"));
-            statusObj.push_back(Pair("errorMessage", "Could not find alias in config. Verify with list-conf."));
+        if (!found) {
+            statusObj.push_back(Pair("result", "failed"));
+            statusObj.push_back(Pair("errorMessage", "Alias not found."));
         }
 
         return statusObj;
-
     }
 
     if (strCommand == "create-all")
@@ -691,6 +744,20 @@ Value masternodebroadcast(const Array& params, bool fHelp)
 
             CTxIn vin = CTxIn(uint256S(mne.getTxHash()), uint32_t(atoi(mne.getOutputIndex().c_str())));
             CMasternodeBroadcast mnb;
+
+            // Extract the IP address from the configuration
+            CService addr(mne.getIp());
+
+            // Check if the IP address is already in use by another masternode
+            if (mnodeman.IsAddressInUse(addr)) {
+                failed++;
+                Object statusObj;
+                statusObj.push_back(Pair("alias", mne.getAlias()));
+                statusObj.push_back(Pair("result", "failed"));
+                statusObj.push_back(Pair("errorMessage", "IP address is already in use by another masternode."));
+                resultsObj.push_back(Pair("status", statusObj));
+                continue; // Skip to the next entry
+            }
 
             bool result = CMasternodeBroadcast::Create(mne.getIp(), mne.getPrivKey(), mne.getTxHash(), mne.getOutputIndex(), errorMessage, mnb, true);
 

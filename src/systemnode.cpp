@@ -421,7 +421,7 @@ bool CSystemnodeBroadcast::CheckAndUpdate(int& nDos) const
         return false;
     }
 
-    if(protocolVersion < systemnodePayments.GetMinSystemnodePaymentsProto()) {
+    if (protocolVersion < systemnodePayments.GetMinSystemnodePaymentsProto()) {
         LogPrintf("snb - ignoring outdated systemnode %s protocol version %d\n", vin.ToString(), protocolVersion);
         return false;
     }
@@ -429,7 +429,7 @@ bool CSystemnodeBroadcast::CheckAndUpdate(int& nDos) const
     CScript pubkeyScript;
     pubkeyScript = GetScriptForDestination(pubkey.GetID());
 
-    if(pubkeyScript.size() != 25) {
+    if (pubkeyScript.size() != 25) {
         LogPrintf("snb - pubkey the wrong size\n");
         nDos = 100;
         return false;
@@ -438,46 +438,45 @@ bool CSystemnodeBroadcast::CheckAndUpdate(int& nDos) const
     CScript pubkeyScript2;
     pubkeyScript2 = GetScriptForDestination(pubkey2.GetID());
 
-    if(pubkeyScript2.size() != 25) {
+    if (pubkeyScript2.size() != 25) {
         LogPrintf("snb - pubkey2 the wrong size\n");
         nDos = 100;
         return false;
     }
 
-    if(!vin.scriptSig.empty()) {
-        LogPrintf("snb - Ignore Not Empty ScriptSig %s\n",vin.ToString());
+    if (!vin.scriptSig.empty()) {
+        LogPrintf("snb - Ignore Not Empty ScriptSig %s\n", vin.ToString());
         return false;
     }
 
     // incorrect ping or its sigTime
-    if(lastPing == CSystemnodePing() || !lastPing.CheckAndUpdate(nDos, false, true))
+    if (lastPing == CSystemnodePing() || !lastPing.CheckAndUpdate(nDos, false, true))
         return false;
 
     std::string strMessage;
     std::string errorMessage = "";
 
-    if(protocolVersion <= 99999999) {
+    if (protocolVersion <= 99999999) {
         std::string vchPubKey(pubkey.begin(), pubkey.end());
         std::string vchPubKey2(pubkey2.begin(), pubkey2.end());
         strMessage = addr.ToString(false) + boost::lexical_cast<std::string>(sigTime) +
-                        vchPubKey + vchPubKey2 + boost::lexical_cast<std::string>(protocolVersion);
+                     vchPubKey + vchPubKey2 + boost::lexical_cast<std::string>(protocolVersion);
 
         LogPrint("systemnode", "snb - sanitized strMessage: %s, pubkey address: %s, sig: %s\n",
-            SanitizeString(strMessage), CBitcoinAddress(pubkey.GetID()).ToString(),
-            EncodeBase64(&sig[0], sig.size()));
+                 SanitizeString(strMessage), CBitcoinAddress(pubkey.GetID()).ToString(),
+                 EncodeBase64(&sig[0], sig.size()));
 
-        if(!legacySigner.VerifyMessage(pubkey, sig, strMessage, errorMessage)){
-            if (addr.ToString() != addr.ToString(false))
-            {
+        if (!legacySigner.VerifyMessage(pubkey, sig, strMessage, errorMessage)) {
+            if (addr.ToString() != addr.ToString(false)) {
                 // maybe it's wrong format, try again with the old one
                 strMessage = addr.ToString() + boost::lexical_cast<std::string>(sigTime) +
-                                vchPubKey + vchPubKey2 + boost::lexical_cast<std::string>(protocolVersion);
+                             vchPubKey + vchPubKey2 + boost::lexical_cast<std::string>(protocolVersion);
 
                 LogPrint("systemnode", "snb - sanitized strMessage: %s, pubkey address: %s, sig: %s\n",
-                    SanitizeString(strMessage), CBitcoinAddress(pubkey.GetID()).ToString(),
-                    EncodeBase64(&sig[0], sig.size()));
+                         SanitizeString(strMessage), CBitcoinAddress(pubkey.GetID()).ToString(),
+                         EncodeBase64(&sig[0], sig.size()));
 
-                if(!legacySigner.VerifyMessage(pubkey, sig, strMessage, errorMessage)){
+                if (!legacySigner.VerifyMessage(pubkey, sig, strMessage, errorMessage)) {
                     // didn't work either
                     LogPrintf("snb - Got bad systemnode address signature, sanitized error: %s\n", SanitizeString(errorMessage));
                     // there is a bug in old MN signatures, ignore such MN but do not ban the peer we got this from
@@ -492,95 +491,121 @@ bool CSystemnodeBroadcast::CheckAndUpdate(int& nDos) const
         }
     } else {
         strMessage = addr.ToString(false) + boost::lexical_cast<std::string>(sigTime) +
-                        pubkey.GetID().ToString() + pubkey2.GetID().ToString() +
-                        boost::lexical_cast<std::string>(protocolVersion);
+                     pubkey.GetID().ToString() + pubkey2.GetID().ToString() +
+                     boost::lexical_cast<std::string>(protocolVersion);
 
         LogPrint("systemnode", "snb - strMessage: %s, pubkey address: %s, sig: %s\n",
-            strMessage, CBitcoinAddress(pubkey.GetID()).ToString(), EncodeBase64(&sig[0], sig.size()));
+                 strMessage, CBitcoinAddress(pubkey.GetID()).ToString(), EncodeBase64(&sig[0], sig.size()));
 
-        if(!legacySigner.VerifyMessage(pubkey, sig, strMessage, errorMessage)){
+        if (!legacySigner.VerifyMessage(pubkey, sig, strMessage, errorMessage)) {
             LogPrintf("snb - Got bad systemnode address signature, error: %s\n", errorMessage);
             nDos = 100;
             return false;
         }
     }
 
-    if(Params().NetworkID() == CBaseChainParams::MAIN) {
-        if(addr.GetPort() != 9340) return false;
-    } else if(addr.GetPort() == 9340) return false;
+    if (Params().NetworkID() == CBaseChainParams::MAIN) {
+        if (addr.GetPort() != 9340) return false;
+    } else if (addr.GetPort() == 9340) return false;
 
-    //search existing systemnode list, this is where we update existing Systemnodes with new snb broadcasts
+    // Check if the IP address is already in use by another enabled systemnode
+    CSystemnode* psn = snodeman.Find(addr);
+
+    // Check if the IPv4 address is found and the vin obtained from the corresponding IPv4 address
+    // does not match the vin of the systemnode attempting to broadcast
+    if (psn && psn->vin != vin) {
+        // Check if the found systemnode is enabled and online
+        if (psn->IsEnabled()) {
+            // Check if the signing time of the new broadcast is later than the signing time of the initial broadcast
+            // to enable the found systemnode. If the new broadcast is more recent, it could be malicious and should be banned.
+            if (sigTime > psn->sigTime) {
+                LogPrintf("CSystemnodeBroadcast::CheckAndUpdate -- IP address already in use by another enabled systemnode %s\n", addr.ToString());
+                // Increment DoS score for duplicate IP
+                nDoS = 33;
+                // Stop the node from broadcasting and ultimately enforce unique IPv4
+                return false;
+            }
+        }
+    }
+
+    // search existing systemnode list, this is where we update existing Systemnodes with new snb broadcasts
     CSystemnode* psn = snodeman.Find(vin);
 
     // no such systemnode, nothing to update
-    if(psn == NULL) return true;
+    if (psn == NULL) return true;
 
-    // this broadcast is older or equal than the one that we already have - it's bad and should never happen
+    // this broadcast is older or equal to the one that we already have - it's bad and should never happen
     // unless someone is doing something fishy
-    // (mapSeensystemnodeBroadcast in CSystemnodeMan::ProcessMessage should filter legit duplicates)
-    if(psn->sigTime >= sigTime) {
-        LogPrintf("CsystemnodeBroadcast::CheckAndUpdate - Bad sigTime %d for Systemnode %20s %105s (existing broadcast is at %d)\n",
-                      sigTime, addr.ToString(), vin.ToString(), psn->sigTime);
+    // (mapSeenSystemnodeBroadcast in CSystemnodeMan::ProcessMessage should filter legit duplicates)
+    if (psn->sigTime >= sigTime) {
+        LogPrintf("CSystemnodeBroadcast::CheckAndUpdate - Bad sigTime %d for Systemnode %20s %105s (existing broadcast is at %d)\n",
+                  sigTime, addr.ToString(), vin.ToString(), psn->sigTime);
         return false;
     }
 
     // systemnode is not enabled yet/already, nothing to update
-    if(!psn->IsEnabled()) return true;
+    if (!psn->IsEnabled()) return true;
 
     // sn.pubkey = pubkey, IsVinAssociatedWithPubkey is validated once below,
     //   after that they just need to match
-    if(psn->pubkey == pubkey && !psn->IsBroadcastedWithin(SYSTEMNODE_MIN_SNB_SECONDS)) {
-        //take the newest entry
+    if (psn->pubkey == pubkey && !psn->IsBroadcastedWithin(SYSTEMNODE_MIN_SNB_SECONDS)) {
+        // take the newest entry
         LogPrintf("snb - Got updated entry for %s\n", addr.ToString());
-        if(psn->UpdateFromNewBroadcast((*this))){
+        if (psn->UpdateFromNewBroadcast((*this))) {
             psn->Check();
-            if(psn->IsEnabled()) Relay();
+            if (psn->IsEnabled()) Relay();
         }
         systemnodeSync.AddedSystemnodeList(GetHash());
     }
 
     return true;
-
 }
 
 bool CSystemnodeBroadcast::CheckInputsAndAdd(int& nDoS) const
 {
     // we are a systemnode with the same vin (i.e. already activated) and this snb is ours (matches our systemnode privkey)
     // so nothing to do here for us
-    if(fSystemNode && vin.prevout == activeSystemnode.vin.prevout && pubkey2 == activeSystemnode.pubKeySystemnode)
+    if (fSystemNode && vin.prevout == activeSystemnode.vin.prevout && pubkey2 == activeSystemnode.pubKeySystemnode)
         return true;
 
     // incorrect ping or its sigTime
-    if(lastPing == CSystemnodePing() || !lastPing.CheckAndUpdate(nDoS, false, true))
+    if (lastPing == CSystemnodePing() || !lastPing.CheckAndUpdate(nDoS, false, true))
         return false;
 
     // search existing systemnode list
     CSystemnode* psn = snodeman.Find(vin);
 
-    if(psn != NULL) {
+    if (psn != NULL) {
         // nothing to do here if we already know about this systemnode and it's enabled
-        if(psn->IsEnabled()) return true;
-        // if it's not enabled, remove old MN first and continue
+        if (psn->IsEnabled()) return true;
+        // if it's not enabled, remove old SN first and continue
         else snodeman.Remove(psn->vin);
+    }
+
+    // Check if the IP address is already in use
+    if (snodeman.IsAddressInUse(addr)) {
+        LogPrintf("CSystemnodeBroadcast::CheckInputsAndAdd -- IP address already in use %s\n", addr.ToString());
+        nDoS = 33;  // Increment DoS score for duplicate IP
+        return false;
     }
 
     CValidationState state;
     CMutableTransaction tx = CMutableTransaction();
-    CTxOut vout = CTxOut((SYSTEMNODE_COLLATERAL - 0.01)*COIN, legacySigner.collateralPubKey);
+    CTxOut vout = CTxOut((SYSTEMNODE_COLLATERAL - 0.01) * COIN, legacySigner.collateralPubKey);
     tx.vin.push_back(vin);
     tx.vout.push_back(vout);
 
     {
         TRY_LOCK(cs_main, lockMain);
-        if(!lockMain) {
+        if (!lockMain) {
             // not snb fault, let it to be checked again later
             snodeman.mapSeenSystemnodeBroadcast.erase(GetHash());
             systemnodeSync.mapSeenSyncSNB.erase(GetHash());
             return false;
         }
 
-        if(!AcceptableInputs(mempool, state, CTransaction(tx), false, NULL)) {
-            //set nDos
+        if (!AcceptableInputs(mempool, state, CTransaction(tx), false, NULL)) {
+            // set nDos
             state.IsInvalid(nDoS);
             return false;
         }
@@ -588,26 +613,24 @@ bool CSystemnodeBroadcast::CheckInputsAndAdd(int& nDoS) const
 
     LogPrint("systemnode", "snb - Accepted systemnode entry\n");
 
-    if(GetInputAge(vin) < SYSTEMNODE_MIN_CONFIRMATIONS){
+    if (GetInputAge(vin) < SYSTEMNODE_MIN_CONFIRMATIONS) {
         LogPrintf("snb - Input must have at least %d confirmations\n", SYSTEMNODE_MIN_CONFIRMATIONS);
-        // maybe we miss few blocks, let this snb to be checked again later
+        // maybe we miss a few blocks, let this snb be checked again later
         snodeman.mapSeenSystemnodeBroadcast.erase(GetHash());
         systemnodeSync.mapSeenSyncSNB.erase(GetHash());
         return false;
     }
 
-    // verify that sig time is legit in past
+    // verify that sig time is legit in the past
     // should be at least not earlier than block when 10000 CRW tx got SYSTEMNODE_MIN_CONFIRMATIONS
     uint256 hashBlock = uint256();
     CTransaction tx2;
     GetTransaction(vin.prevout.hash, tx2, hashBlock, true);
     BlockMap::iterator mi = mapBlockIndex.find(hashBlock);
-    if (mi != mapBlockIndex.end() && (*mi).second)
-    {
+    if (mi != mapBlockIndex.end() && (*mi).second) {
         CBlockIndex* pMNIndex = (*mi).second; // block for 10000 CRW tx -> 1 confirmation
         CBlockIndex* pConfIndex = chainActive[pMNIndex->nHeight + SYSTEMNODE_MIN_CONFIRMATIONS - 1]; // block where tx got SYSTEMNODE_MIN_CONFIRMATIONS
-        if(pConfIndex->GetBlockTime() > sigTime)
-        {
+        if (pConfIndex->GetBlockTime() > sigTime) {
             LogPrintf("snb - Bad sigTime %d for systemnode %20s %105s (%i conf block is at %d)\n",
                       sigTime, addr.ToString(), vin.ToString(), SYSTEMNODE_MIN_CONFIRMATIONS, pConfIndex->GetBlockTime());
             return false;
@@ -619,7 +642,7 @@ bool CSystemnodeBroadcast::CheckInputsAndAdd(int& nDoS) const
     snodeman.Add(sn);
 
     // if it matches our systemnode privkey, then we've been remotely activated
-    if(pubkey2 == activeSystemnode.pubKeySystemnode && protocolVersion == PROTOCOL_VERSION){
+    if (pubkey2 == activeSystemnode.pubKeySystemnode && protocolVersion == PROTOCOL_VERSION) {
         activeSystemnode.EnableHotColdSystemNode(vin, addr);
         if (!vchSignover.empty()) {
             if (pubkey.Verify(pubkey2.GetHash(), vchSignover)) {
@@ -631,17 +654,16 @@ bool CSystemnodeBroadcast::CheckInputsAndAdd(int& nDoS) const
         } else {
             LogPrintf("%s: NOT SIGNOVER!\n", __func__);
         }
-
     }
 
     bool isLocal = addr.IsRFC1918() || addr.IsLocal();
-    if(Params().NetworkID() == CBaseChainParams::REGTEST) isLocal = false;
+    if (Params().NetworkID() == CBaseChainParams::REGTEST) isLocal = false;
 
-    if(!isLocal) Relay();
+    if (!isLocal) Relay();
 
     return true;
-
 }
+
 
 void CSystemnodeBroadcast::Relay() const
 {

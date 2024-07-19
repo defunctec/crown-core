@@ -238,6 +238,17 @@ void CMasternodeMan::DsegUpdate(CNode* pnode)
     mWeAskedForMasternodeList[pnode->addr] = askAgain;
 }
 
+bool CMasternodeMan::IsAddressInUse(const CService& addr)
+{
+    LOCK(cs);
+    for (const auto& mn : vMasternodes) {
+        if (mn.addr == addr) {
+            return true;
+        }
+    }
+    return false;
+}
+
 CMasternode *CMasternodeMan::Find(const CScript &payee)
 {
     LOCK(cs);
