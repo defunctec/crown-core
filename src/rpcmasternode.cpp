@@ -115,7 +115,7 @@ Value masternode(const Array& params, bool fHelp)
                 "\nAvailable commands:\n"
                 "  count        - Print number of all known masternodes (optional: 'ls', 'enabled', 'all', 'qualify')\n"
                 "  current      - Print info on current masternode winner\n"
-                "  connect      - Test the connection to a Systemnode using node collateral address\n"
+                "  connect      - Test the connection to a Masternode using node collateral address\n"
                 "  debug        - Print masternode status\n"
                 "  enforce      - Enforce masternode payments\n"
                 "  outputs      - Print masternode compatible outputs\n"
@@ -231,27 +231,27 @@ Value masternode(const Array& params, bool fHelp)
 
     if (strCommand == "start")
     {
-        if (!fSystemNode) throw runtime_error("you must set systemnode=1 in the configuration\n");
+        if (!fMasterNode) throw runtime_error("you must set masternode=1 in the configuration\n");
 
         {
             LOCK(pwalletMain->cs_wallet);
             EnsureWalletIsUnlocked();
         }
 
-        // Get the IP address of the active systemnode
-        CService addr = activeSystemnode.service;
+        // Get the IP address of the active masternode
+        CService addr = activeMasternode.service;
 
-        // Check if the IP address is already in use by another systemnode
-        if (snodeman.IsAddressInUse(addr)) {
-            throw runtime_error("IP address is already in use by another systemnode");
+        // Check if the IP address is already in use by another masternode
+        if (mnodeman.IsAddressInUse(addr)) {
+            throw runtime_error("IP address is already in use by another masternode");
         }
 
-        if (activeSystemnode.status != ACTIVE_SYSTEMNODE_STARTED) {
-            activeSystemnode.status = ACTIVE_SYSTEMNODE_INITIAL; // TODO: consider better way
-            activeSystemnode.ManageStatus();
+        if (activeMasternode.status != ACTIVE_MASTERNODE_STARTED) {
+            activeMasternode.status = ACTIVE_MASTERNODE_INITIAL; // TODO: consider better way
+            activeMasternode.ManageStatus();
         }
 
-        return activeSystemnode.GetStatus();
+        return activeMasternode.GetStatus();
     }
 
     if (strCommand == "start-alias")
