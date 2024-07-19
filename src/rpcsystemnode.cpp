@@ -1,11 +1,14 @@
 // Copyright (c) 2010 Satoshi Nakamoto
 // Copyright (c) 2009-2012 The Bitcoin developers
+// Copyright (c) 2014-2015 The Dash developers
+// Copyright (c) 2014-2018 The Crown developers
 // Distributed under the MIT/X11 software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include "main.h"
 #include "db.h"
 #include "init.h"
+#include "net.h"
 #include "systemnodeconfig.h"
 #include "systemnode.h"
 #include "systemnodeman.h"
@@ -15,6 +18,7 @@
 #include "wallet.h"
 #include "key.h"
 #include "base58.h"
+#include "netbase.h"
 
 #include <fstream>
 #include <string>
@@ -54,6 +58,7 @@ Value systemnode(const Array& params, bool fHelp)
                 "\nAvailable commands:\n"
                 "  count        - Print number of all known systemnodes (optional: 'ds', 'enabled', 'all', 'qualify')\n"
                 "  current      - Print info on current systemnode winner\n"
+                "  connect      - Test the connection to a Systemnode using node collateral address\n"
                 "  debug        - Print systemnode status\n"
                 "  enforce      - Enforce systemnode payments\n"
                 "  outputs      - Print systemnode compatible outputs\n"
@@ -78,7 +83,7 @@ Value systemnode(const Array& params, bool fHelp)
         return "Show budgets";
     }
 
-    if(strCommand == "connect")
+    if (strCommand == "connect")
     {
         std::string strAddress = "";
         if (params.size() == 2) {
@@ -87,14 +92,21 @@ Value systemnode(const Array& params, bool fHelp)
             throw runtime_error("Systemnode address required\n");
         }
 
-        CService addr = CService(strAddress);
+        CService addr;
+        try {
+            addr = CService(strAddress);
+        } catch (const std::exception &e) {
+            throw runtime_error("Invalid address format: " + std::string(e.what()) + "\n");
+        } catch (...) {
+            throw runtime_error("An unknown error occurred while parsing the address\n");
+        }
 
         CNode *pnode = ConnectNode((CAddress)addr, NULL, false);
-        if(pnode){
+        if (pnode) {
             pnode->Release();
-            return "successfully connected";
+            return "Successfully connected to " + addr.ToString();
         } else {
-            throw runtime_error("error connecting\n");
+            throw runtime_error("Error connecting to " + addr.ToString() + "\n");
         }
     }
 
@@ -177,51 +189,59 @@ Value systemnode(const Array& params, bool fHelp)
         return activeSystemnode.GetStatus();
     }
 
-    if (strCommand == "start-alias")
-    {
-        if (params.size() < 2){
-            throw runtime_error("command needs at least 2 parameters\n");
-        }
-
-        {
-            LOCK(pwalletMain->cs_wallet);
-            EnsureWalletIsUnlocked();
-        }
-
-        std::string alias = params[1].get_str();
-
-        bool found = false;
-
-        Object statusObj;
-        statusObj.push_back(Pair("alias", alias));
-
-        BOOST_FOREACH(CNodeEntry mne, systemnodeConfig.getEntries()) {
-            if(mne.getAlias() == alias) {
-                found = true;
-                std::string errorMessage;
-                CSystemnodeBroadcast snb;
-
-                bool result = CSystemnodeBroadcast::Create(mne.getIp(), mne.getPrivKey(), mne.getTxHash(), mne.getOutputIndex(), errorMessage, snb);
-
-                statusObj.push_back(Pair("result", result ? "successful" : "failed"));
-                if(result) {
-                    snodeman.UpdateSystemnodeList(snb);
-                    snb.Relay();
-                } else {
-                    statusObj.push_back(Pair("errorMessage", errorMessage));
-                }
-                break;
-            }
-        }
-
-        if(!found) {
-            statusObj.push_back(Pair("result", "failed"));
-            statusObj.push_back(Pair("errorMessage", "could not find alias in config. Verify with list-conf."));
-        }
-
-        return statusObj;
-
+if (strCommand == "start-alias")
+{
+    if (params.size() < 2) {
+        throw runtime_error("command needs at least 2 parameters\n");
     }
+
+    {
+        LOCK(pwalletMain->cs_wallet);
+        EnsureWalletIsUnlocked();
+    }
+
+    std::string alias = params[1].get_str();
+
+    bool found = false;
+
+    Object statusObj;
+    statusObj.push_back(Pair("alias", alias));
+
+    BOOST_FOREACH(CNodeEntry mne, systemnodeConfig.getEntries()) {
+        if (mne.getAlias() == alias) {
+            found = true;
+            std::string errorMessage;
+            CSystemnodeBroadcast snb;
+
+            CService addr(mne.getIp());
+            // Check if the IP address is already in use by another systemnode
+
+            if (snodeman.IsAddressInUse(addr)) {
+                statusObj.push_back(Pair("result", "failed"));
+                statusObj.push_back(Pair("errorMessage", "IP address is already in use by another systemnode."));
+                return statusObj;
+            }
+
+            bool result = CSystemnodeBroadcast::Create(mne.getIp(), mne.getPrivKey(), mne.getTxHash(), mne.getOutputIndex(), errorMessage, snb);
+
+            statusObj.push_back(Pair("result", result ? "successful" : "failed"));
+            if (result) {
+                snodeman.UpdateSystemnodeList(snb);
+                snb.Relay();
+            } else {
+                statusObj.push_back(Pair("errorMessage", errorMessage));
+            }
+            break;
+        }
+    }
+
+    if (!found) {
+        statusObj.push_back(Pair("result", "failed"));
+        statusObj.push_back(Pair("errorMessage", "could not find alias in config. Verify with list-conf."));
+    }
+
+    return statusObj;
+}
 
     if (strCommand == "create")
     {
@@ -274,9 +294,9 @@ Value systemnode(const Array& params, bool fHelp)
             EnsureWalletIsUnlocked();
         }
 
-        if((strCommand == "start-missing" || strCommand == "start-disabled") &&
-         (systemnodeSync.RequestedSystemnodeAssets <= SYSTEMNODE_SYNC_LIST ||
-          systemnodeSync.RequestedSystemnodeAssets == SYSTEMNODE_SYNC_FAILED)) {
+        if ((strCommand == "start-missing" || strCommand == "start-disabled") &&
+            (systemnodeSync.RequestedSystemnodeAssets <= SYSTEMNODE_SYNC_LIST ||
+            systemnodeSync.RequestedSystemnodeAssets == SYSTEMNODE_SYNC_FAILED)) {
             throw runtime_error("You can't use this command until systemnode list is synced\n");
         }
 
@@ -292,11 +312,23 @@ Value systemnode(const Array& params, bool fHelp)
             std::string errorMessage;
 
             CTxIn vin = CTxIn(uint256S(mne.getTxHash()), uint32_t(atoi(mne.getOutputIndex().c_str())));
-            CSystemnode *pmn = snodeman.Find(vin);
+            CSystemnode *psn = snodeman.Find(vin);
             CSystemnodeBroadcast snb;
 
-            if(strCommand == "start-missing" && pmn) continue;
-            if(strCommand == "start-disabled" && pmn && pmn->IsEnabled()) continue;
+            if (strCommand == "start-missing" && psn) continue;
+            if (strCommand == "start-disabled" && psn && psn->IsEnabled()) continue;
+
+            CService addr(mne.getIp());
+            // Check if the IP address is already in use by another systemnode
+            if (snodeman.IsAddressInUse(addr)) {
+                failed++;
+                Object statusObj;
+                statusObj.push_back(Pair("alias", mne.getAlias()));
+                statusObj.push_back(Pair("result", "failed"));
+                statusObj.push_back(Pair("errorMessage", "IP address is already in use by another systemnode."));
+                resultsObj.push_back(Pair("status", statusObj));
+                continue; // Skip to the next entry
+            }
 
             bool result = CSystemnodeBroadcast::Create(mne.getIp(), mne.getPrivKey(), mne.getTxHash(), mne.getOutputIndex(), errorMessage, snb);
 
@@ -304,7 +336,7 @@ Value systemnode(const Array& params, bool fHelp)
             statusObj.push_back(Pair("alias", mne.getAlias()));
             statusObj.push_back(Pair("result", result ? "successful" : "failed"));
 
-            if(result) {
+            if (result) {
                 successful++;
                 snodeman.UpdateSystemnodeList(snb);
                 snb.Relay();
@@ -322,6 +354,7 @@ Value systemnode(const Array& params, bool fHelp)
 
         return returnObj;
     }
+
 
     if(strCommand == "status")
     {
@@ -547,7 +580,7 @@ Value systemnodebroadcast(const Array& params, bool fHelp)
         bool found = false;
 
         Object statusObj;
-        std::vector<CSystemnodeBroadcast> vecMnb;
+        std::vector<CSystemnodeBroadcast> vecSnb;
 
         statusObj.push_back(Pair("alias", alias));
 
@@ -557,14 +590,23 @@ Value systemnodebroadcast(const Array& params, bool fHelp)
                 std::string errorMessage;
                 CSystemnodeBroadcast snb;
 
+                CService addr(mne.getIp());
+                // Check if the IP address is already in use by another systemnode
+
+                if (snodeman.IsAddressInUse(addr)) {
+                    statusObj.push_back(Pair("result", "failed"));
+                    statusObj.push_back(Pair("errorMessage", "IP address is already in use by another systemnode."));
+                    break; // Skip to the next entry
+                }
+
                 bool result = CSystemnodeBroadcast::Create(mne.getIp(), mne.getPrivKey(), mne.getTxHash(), mne.getOutputIndex(), errorMessage, snb, true);
 
                 statusObj.push_back(Pair("result", result ? "successful" : "failed"));
                 if(result) {
-                    vecMnb.push_back(snb);
-                    CDataStream ssVecMnb(SER_NETWORK, PROTOCOL_VERSION);
-                    ssVecMnb << vecMnb;
-                    statusObj.push_back(Pair("hex", HexStr(ssVecMnb.begin(), ssVecMnb.end())));
+                    vecSnb.push_back(snb);
+                    CDataStream ssVecSnb(SER_NETWORK, PROTOCOL_VERSION);
+                    ssVecSnb << vecSnb;
+                    statusObj.push_back(Pair("hex", HexStr(ssVecSnb.begin(), ssVecSnb.end())));
                 } else {
                     statusObj.push_back(Pair("errorMessage", errorMessage));
                 }
@@ -578,8 +620,8 @@ Value systemnodebroadcast(const Array& params, bool fHelp)
         }
 
         return statusObj;
-
     }
+
 
     if (strCommand == "create-all")
     {
@@ -599,13 +641,26 @@ Value systemnodebroadcast(const Array& params, bool fHelp)
         int failed = 0;
 
         Object resultsObj;
-        std::vector<CSystemnodeBroadcast> vecMnb;
+        std::vector<CSystemnodeBroadcast> vecSnb;
 
         BOOST_FOREACH(CNodeEntry mne, systemnodeConfig.getEntries()) {
             std::string errorMessage;
 
             CTxIn vin = CTxIn(uint256S(mne.getTxHash()), uint32_t(atoi(mne.getOutputIndex().c_str())));
             CSystemnodeBroadcast snb;
+
+            // Check if the IP address is already in use by another systemnode
+            CService addr(mne.getIp());
+
+            if (snodeman.IsAddressInUse(addr)) {
+                failed++;
+                Object statusObj;
+                statusObj.push_back(Pair("alias", mne.getAlias()));
+                statusObj.push_back(Pair("result", "failed"));
+                statusObj.push_back(Pair("errorMessage", "IP address is already in use by another systemnode."));
+                resultsObj.push_back(Pair("status", statusObj));
+                continue; // Skip to the next entry
+            }
 
             bool result = CSystemnodeBroadcast::Create(mne.getIp(), mne.getPrivKey(), mne.getTxHash(), mne.getOutputIndex(), errorMessage, snb, true);
 
@@ -615,7 +670,7 @@ Value systemnodebroadcast(const Array& params, bool fHelp)
 
             if(result) {
                 successful++;
-                vecMnb.push_back(snb);
+                vecSnb.push_back(snb);
             } else {
                 failed++;
                 statusObj.push_back(Pair("errorMessage", errorMessage));
@@ -624,15 +679,16 @@ Value systemnodebroadcast(const Array& params, bool fHelp)
             resultsObj.push_back(Pair("status", statusObj));
         }
 
-        CDataStream ssVecMnb(SER_NETWORK, PROTOCOL_VERSION);
-        ssVecMnb << vecMnb;
+        CDataStream ssVecSnb(SER_NETWORK, PROTOCOL_VERSION);
+        ssVecSnb << vecSnb;
         Object returnObj;
         returnObj.push_back(Pair("overall", strprintf("Successfully created broadcast messages for %d systemnodes, failed to create %d, total %d", successful, failed, successful + failed)));
         returnObj.push_back(Pair("detail", resultsObj));
-        returnObj.push_back(Pair("hex", HexStr(ssVecMnb.begin(), ssVecMnb.end())));
+        returnObj.push_back(Pair("hex", HexStr(ssVecSnb.begin(), ssVecSnb.end())));
 
         return returnObj;
     }
+
 
     if (strCommand == "decode")
     {

@@ -586,32 +586,52 @@ bool CMasternodeBroadcast::CheckAndUpdate(int& nDos) const
         if(addr.GetPort() != 9340) return false;
     } else if(addr.GetPort() == 9340) return false;
 
-    //search existing Masternode list, this is where we update existing Masternodes with new mnb broadcasts
+    // Setting pmn to the masternode found using the given IPv4 address
+    CMasternode* pmn = mnodeman.Find(addr);
+
+    // Check if the IPv4 address is found and the vin obtained from the corresponding IPv4 address
+    // does not match the vin of the masternode attempting to broadcast
+    if (pmn && pmn->vin != vin) {
+        // Check if found Masternode is enabled and online
+        if (pmn->IsEnabled()) {
+        // Check if the signing time of the new broadcast is later than the signing time of the initial broadcast
+        // to enable the found masternode. If the new broadcast is more recent, it could be malicious and should be banned.
+            if (sigTime > pmn->sigTime) {
+                LogPrintf("CMasternodeBroadcast::CheckAndUpdate -- IP address already in use by another enabled masternode %s\n", addr.ToString());
+                // Increment DoS score for duplicate IP
+                nDoS = 33;
+                // Stop the node from broadcasting and ultimately enforcing unique IPv4
+                return false;
+            }
+        }
+    }
+
+    // search existing Masternode list, this is where we update existing Masternodes with new mnb broadcasts
     CMasternode* pmn = mnodeman.Find(vin);
 
     // no such masternode, nothing to update
-    if(pmn == NULL) return true;
+    if (pmn == NULL) return true;
 
-    // this broadcast is older or equal than the one that we already have - it's bad and should never happen
+    // this broadcast is older or equal to the one that we already have - it's bad and should never happen
     // unless someone is doing something fishy
     // (mapSeenMasternodeBroadcast in CMasternodeMan::ProcessMessage should filter legit duplicates)
-    if(pmn->sigTime >= sigTime) {
+    if (pmn->sigTime >= sigTime) {
         LogPrintf("CMasternodeBroadcast::CheckAndUpdate - Bad sigTime %d for Masternode %20s %105s (existing broadcast is at %d)\n",
-                      sigTime, addr.ToString(), vin.ToString(), pmn->sigTime);
+                  sigTime, addr.ToString(), vin.ToString(), pmn->sigTime);
         return false;
     }
 
     // masternode is not enabled yet/already, nothing to update
-    if(!pmn->IsEnabled()) return true;
+    if (!pmn->IsEnabled()) return true;
 
     // mn.pubkey = pubkey, IsVinAssociatedWithPubkey is validated once below,
     //   after that they just need to match
-    if(pmn->pubkey == pubkey && !pmn->IsBroadcastedWithin(MASTERNODE_MIN_MNB_SECONDS)) {
-        //take the newest entry
+    if (pmn->pubkey == pubkey && !pmn->IsBroadcastedWithin(MASTERNODE_MIN_MNB_SECONDS)) {
+        // take the newest entry
         LogPrintf("mnb - Got updated entry for %s\n", addr.ToString());
-        if(pmn->UpdateFromNewBroadcast((*this))){
+        if (pmn->UpdateFromNewBroadcast((*this))) {
             pmn->Check();
-            if(pmn->IsEnabled()) Relay();
+            if (pmn->IsEnabled()) Relay();
         }
         masternodeSync.AddedMasternodeList(GetHash());
     }
@@ -640,23 +660,30 @@ bool CMasternodeBroadcast::CheckInputsAndAdd(int& nDoS) const
         else mnodeman.Remove(pmn->vin);
     }
 
+    // Check if the IP address is already in use
+    if (mnodeman.IsAddressInUse(addr)) {
+        LogPrintf("CMasternodeBroadcast::CheckInputsAndAdd -- IP address already in use %s\n", addr.ToString());
+        nDoS = 33;  // Increment DoS score for duplicate IP
+        return false;
+    }
+
     CValidationState state;
     CMutableTransaction tx = CMutableTransaction();
-    CTxOut vout = CTxOut((MASTERNODE_COLLATERAL - 0.01)*COIN, legacySigner.collateralPubKey);
+    CTxOut vout = CTxOut((MASTERNODE_COLLATERAL - 0.01) * COIN, legacySigner.collateralPubKey);
     tx.vin.push_back(vin);
     tx.vout.push_back(vout);
 
     {
         TRY_LOCK(cs_main, lockMain);
-        if(!lockMain) {
+        if (!lockMain) {
             // not mnb fault, let it to be checked again later
             mnodeman.mapSeenMasternodeBroadcast.erase(GetHash());
             masternodeSync.mapSeenSyncMNB.erase(GetHash());
             return false;
         }
 
-        if(!AcceptableInputs(mempool, state, CTransaction(tx), false, NULL)) {
-            //set nDos
+        if (!AcceptableInputs(mempool, state, CTransaction(tx), false, NULL)) {
+            // set nDos
             state.IsInvalid(nDoS);
             return false;
         }
@@ -664,7 +691,7 @@ bool CMasternodeBroadcast::CheckInputsAndAdd(int& nDoS) const
 
     LogPrint("masternode", "mnb - Accepted Masternode entry\n");
 
-    if(GetInputAge(vin) < MASTERNODE_MIN_CONFIRMATIONS){
+    if (GetInputAge(vin) < MASTERNODE_MIN_CONFIRMATIONS) {
         LogPrintf("mnb - Input must have at least %d confirmations\n", MASTERNODE_MIN_CONFIRMATIONS);
         // maybe we miss few blocks, let this mnb to be checked again later
         mnodeman.mapSeenMasternodeBroadcast.erase(GetHash());
@@ -678,12 +705,10 @@ bool CMasternodeBroadcast::CheckInputsAndAdd(int& nDoS) const
     CTransaction tx2;
     GetTransaction(vin.prevout.hash, tx2, hashBlock, true);
     BlockMap::iterator mi = mapBlockIndex.find(hashBlock);
-    if (mi != mapBlockIndex.end() && (*mi).second)
-    {
+    if (mi != mapBlockIndex.end() && (*mi).second) {
         CBlockIndex* pMNIndex = (*mi).second; // block for 10000 CRW tx -> 1 confirmation
         CBlockIndex* pConfIndex = chainActive[pMNIndex->nHeight + MASTERNODE_MIN_CONFIRMATIONS - 1]; // block where tx got MASTERNODE_MIN_CONFIRMATIONS
-        if(pConfIndex->GetBlockTime() > sigTime)
-        {
+        if (pConfIndex->GetBlockTime() > sigTime) {
             LogPrintf("mnb - Bad sigTime %d for Masternode %20s %105s (%i conf block is at %d)\n",
                       sigTime, addr.ToString(), vin.ToString(), MASTERNODE_MIN_CONFIRMATIONS, pConfIndex->GetBlockTime());
             return false;
@@ -695,7 +720,7 @@ bool CMasternodeBroadcast::CheckInputsAndAdd(int& nDoS) const
     mnodeman.Add(mn);
 
     // if it matches our Masternode privkey, then we've been remotely activated
-    if(pubkey2 == activeMasternode.pubKeyMasternode && protocolVersion == PROTOCOL_VERSION){
+    if (pubkey2 == activeMasternode.pubKeyMasternode && protocolVersion == PROTOCOL_VERSION) {
         activeMasternode.EnableHotColdMasterNode(vin, addr);
         if (!vchSignover.empty()) {
             if (pubkey.Verify(pubkey2.GetHash(), vchSignover)) {
@@ -710,9 +735,9 @@ bool CMasternodeBroadcast::CheckInputsAndAdd(int& nDoS) const
     }
 
     bool isLocal = addr.IsRFC1918() || addr.IsLocal();
-    if(Params().NetworkID() == CBaseChainParams::REGTEST) isLocal = false;
+    if (Params().NetworkID() == CBaseChainParams::REGTEST) isLocal = false;
 
-    if(!isLocal) Relay();
+    if (!isLocal) Relay();
 
     return true;
 }

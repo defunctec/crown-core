@@ -263,6 +263,20 @@ bool CSystemnodeMan::CheckSnbAndUpdateSystemnodeList(CSystemnodeBroadcast snb, i
     return true;
 }
 
+CSystemnode* CSystemnodeMan::Find(const CScript &payee)
+{
+    LOCK(cs);
+    CScript payee2;
+
+    BOOST_FOREACH(CSystemnode& sn, vSystemnodes)
+    {
+        payee2 = GetScriptForDestination(sn.pubkey.GetID());
+        if(payee2 == payee)
+            return &sn;
+    }
+    return NULL;
+}
+
 CSystemnode *CSystemnodeMan::Find(const CTxIn &vin)
 {
     LOCK(cs);
@@ -451,6 +465,17 @@ void CSystemnodeMan::DsegUpdate(CNode* pnode)
     mWeAskedForSystemnodeList[pnode->addr] = askAgain;
 }
 
+bool CSystemnodeMan::IsAddressInUse(const CService& addr)
+{
+    LOCK(cs);
+    for (const auto& sn : vSystemnodes) {
+        if (sn.addr == addr) {
+            return true;
+        }
+    }
+    return false;
+}
+
 std::string CSystemnodeMan::ToString() const
 {
     std::ostringstream info;
@@ -489,22 +514,24 @@ CSystemnode* CSystemnodeMan::GetCurrentSystemNode(int mod, int64_t nBlockHeight,
     CSystemnode* winner = NULL;
 
     // scan for winner
-    BOOST_FOREACH(CSystemnode& mn, vSystemnodes) {
-        mn.Check();
-        if(mn.protocolVersion < minProtocol || !mn.IsEnabled()) continue;
+    BOOST_FOREACH(CSystemnode& sn, vSystemnodes) {
+        sn.Check();
+        if(sn.protocolVersion < minProtocol || !sn.IsEnabled()) continue;
 
         // calculate the score for each Systemnode
-        int64_t n2 = mn.CalculateScore(nBlockHeight).GetCompact(false);
+        arith_uint256 n = sn.CalculateScore(nBlockHeight);
+        int64_t n2 = n.GetCompact(false);
 
         // determine the winner
         if(n2 > score){
             score = n2;
-            winner = &mn;
+            winner = &sn;
         }
     }
 
     return winner;
 }
+
 
 int CSystemnodeMan::GetSystemnodeRank(const CTxIn& vin, int64_t nBlockHeight, int minProtocol, bool fOnlyActive)
 {
