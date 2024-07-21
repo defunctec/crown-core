@@ -520,40 +520,40 @@ bool ClientAllowed(const boost::asio::ip::address& address)
     return false;
 }
 
-template <typename Protocol>
+template<typename Protocol>
 class AcceptedConnectionImpl : public AcceptedConnection {
 public:
     AcceptedConnectionImpl(
-            typename Protocol::executor_type executor,
-            ssl::context &context,
-            bool fUseSSL) :
+        typename Protocol::executor_type executor,
+        boost::asio::ssl::context &context,
+        bool fUseSSL) :
         sslStream(executor, context),
         _d(sslStream, fUseSSL),
         _stream(_d)
     {
     }
 
-    virtual std::iostream& stream()
+    virtual std::iostream& stream() override
     {
         return _stream;
     }
 
-    virtual std::string peer_address_to_string() const
+    virtual std::string peer_address_to_string() const override
     {
         return peer.address().to_string();
     }
 
-    virtual void close()
+    virtual void close() override
     {
         _stream.close();
     }
 
     typename Protocol::endpoint peer;
-    asio::ssl::stream<typename Protocol::socket> sslStream;
+    boost::asio::ssl::stream<typename Protocol::socket> sslStream;
 
 private:
     SSLIOStreamDevice<Protocol> _d;
-    iostreams::stream< SSLIOStreamDevice<Protocol> > _stream;
+    boost::iostreams::stream<SSLIOStreamDevice<Protocol>> _stream;
 };
 
 void ServiceConnection(AcceptedConnection *conn);
@@ -570,19 +570,21 @@ static void RPCAcceptHandler(boost::shared_ptr< basic_socket_acceptor<Protocol, 
  * Sets up I/O resources to accept and handle a new connection.
  */
 template <typename Protocol, typename SocketAcceptorService>
-void RPCListen(boost::shared_ptr<boost::asio::basic_socket_acceptor<boost::asio::ip::tcp>> acceptor, boost::asio::ssl::context& context, bool fUseSSL) 
+void RPCListen(boost::shared_ptr <boost::asio::basic_socket_acceptor <Protocol, SocketAcceptorService> > acceptor, boost::asio::ssl::context& context, bool fUseSSL) 
 {
-    boost::shared_ptr<AcceptedConnectionImpl<boost::asio::ip::tcp>> conn(new AcceptedConnectionImpl<boost::asio::ip::tcp>(acceptor->get_executor(), context, fUseSSL));
+    // Create a shared pointer to AcceptedConnectionImpl using the Protocol template
+    boost::shared_ptr<AcceptedConnectionImpl<Protocol>> conn(new AcceptedConnectionImpl<Protocol>(acceptor->get_executor(), context, fUseSSL));
 
+    // Setup the asynchronous accept to use RPCAcceptHandler
     acceptor->async_accept(
-            conn->sslStream.lowest_layer(),
-            conn->peer,
-            boost::bind(&RPCAcceptHandler<Protocol, SocketAcceptorService>,
-                acceptor,
-                boost::ref(context),
-                fUseSSL,
-                conn,
-                _1));
+        conn->sslStream.lowest_layer(),
+        conn->peer,
+        boost::bind(&RPCAcceptHandler<Protocol, SocketAcceptorService>,
+            acceptor,
+            boost::ref(context),
+            fUseSSL,
+            conn,
+            boost::asio::placeholders::error));
 }
 
 /**
@@ -597,7 +599,7 @@ static void RPCAcceptHandler(boost::shared_ptr< basic_socket_acceptor<Protocol, 
 {
     // Immediately start accepting new connections, except when we're cancelled or our socket is closed.
     if (error != asio::error::operation_aborted && acceptor->is_open())
-        RPCListen(acceptor, *rpc_ssl_context, fUseSSL);
+        RPCListen<boost::asio::ip::tcp, boost::asio::socket_acceptor_service<boost::asio::ip::tcp>>(acceptor, *rpc_ssl_context, fUseSSL);
 
     AcceptedConnectionImpl<ip::tcp>* tcp_conn = dynamic_cast< AcceptedConnectionImpl<ip::tcp>* >(conn.get());
 
