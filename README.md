@@ -1,4 +1,4 @@
-# Crown Platform 0.14.0
+# Crown Platform 0.14.5
 
 [![pipeline status](http://gitlab.crownplatform.com/crown/crown-core/badges/master/pipeline.svg)](http://gitlab.crownplatform.com/crown/crown-core/commits/master)
 
