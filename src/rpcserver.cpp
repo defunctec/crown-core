@@ -45,11 +45,11 @@ static std::string rpcWarmupStatus("RPC server started");
 static CCriticalSection cs_rpcWarmup;
 
 //! These are created by StartRPCThreads, destroyed in StopRPCThreads
-static asio::io_service* rpc_io_service = NULL;
+static asio::io_context* rpc_io_context = NULL;
 static map<string, boost::shared_ptr<deadline_timer> > deadlineTimers;
 static ssl::context* rpc_ssl_context = NULL;
 static boost::thread_group* rpc_worker_group = NULL;
-static boost::asio::io_service::work *rpc_dummy_work = NULL;
+static boost::asio::io_context::work *rpc_dummy_work = NULL;
 static std::vector<CSubNet> rpc_allow_subnets; //!< List of subnets to allow RPC connections from
 static std::vector< boost::shared_ptr<ip::tcp::acceptor> > rpc_acceptors;
 
@@ -521,14 +521,13 @@ bool ClientAllowed(const boost::asio::ip::address& address)
 }
 
 template <typename Protocol>
-class AcceptedConnectionImpl : public AcceptedConnection
-{
+class AcceptedConnectionImpl : public AcceptedConnection {
 public:
     AcceptedConnectionImpl(
-            asio::io_service& io_service,
+            typename Protocol::executor_type executor,
             ssl::context &context,
             bool fUseSSL) :
-        sslStream(io_service, context),
+        sslStream(executor, context),
         _d(sslStream, fUseSSL),
         _stream(_d)
     {
@@ -571,12 +570,9 @@ static void RPCAcceptHandler(boost::shared_ptr< basic_socket_acceptor<Protocol, 
  * Sets up I/O resources to accept and handle a new connection.
  */
 template <typename Protocol, typename SocketAcceptorService>
-static void RPCListen(boost::shared_ptr< basic_socket_acceptor<Protocol, SocketAcceptorService> > acceptor,
-                   ssl::context& context,
-                   const bool fUseSSL)
+void RPCListen(boost::shared_ptr<boost::asio::basic_socket_acceptor<boost::asio::ip::tcp>> acceptor, boost::asio::ssl::context& context, bool fUseSSL) 
 {
-    // Accept connection
-    boost::shared_ptr< AcceptedConnectionImpl<Protocol> > conn(new AcceptedConnectionImpl<Protocol>(acceptor->get_io_service(), context, fUseSSL));
+    boost::shared_ptr<AcceptedConnectionImpl<boost::asio::ip::tcp>> conn(new AcceptedConnectionImpl<boost::asio::ip::tcp>(acceptor->get_executor(), context, fUseSSL));
 
     acceptor->async_accept(
             conn->sslStream.lowest_layer(),
@@ -588,7 +584,6 @@ static void RPCListen(boost::shared_ptr< basic_socket_acceptor<Protocol, SocketA
                 conn,
                 _1));
 }
-
 
 /**
  * Accept and handle incoming connection.
@@ -602,7 +597,7 @@ static void RPCAcceptHandler(boost::shared_ptr< basic_socket_acceptor<Protocol, 
 {
     // Immediately start accepting new connections, except when we're cancelled or our socket is closed.
     if (error != asio::error::operation_aborted && acceptor->is_open())
-        RPCListen(acceptor, context, fUseSSL);
+        RPCListen(acceptor, *rpc_ssl_context, fUseSSL);
 
     AcceptedConnectionImpl<ip::tcp>* tcp_conn = dynamic_cast< AcceptedConnectionImpl<ip::tcp>* >(conn.get());
 
@@ -686,9 +681,9 @@ void StartRPCThreads()
         return;
     }
 
-    assert(rpc_io_service == NULL);
-    rpc_io_service = new asio::io_service();
-    rpc_ssl_context = new ssl::context(*rpc_io_service, ssl::context::sslv23);
+    assert(rpc_io_context == NULL);
+    rpc_io_context = new asio::io_context();
+    rpc_ssl_context = new ssl::context(*rpc_io_context, ssl::context::sslv23);
 
     const bool fUseSSL = GetBoolArg("-rpcssl", false);
 
@@ -698,16 +693,20 @@ void StartRPCThreads()
 
         filesystem::path pathCertFile(GetArg("-rpcsslcertificatechainfile", "server.cert"));
         if (!pathCertFile.is_complete()) pathCertFile = filesystem::path(GetDataDir()) / pathCertFile;
-        if (filesystem::exists(pathCertFile)) rpc_ssl_context->use_certificate_chain_file(pathCertFile.string());
-        else LogPrintf("ThreadRPCServer ERROR: missing server certificate file %s\n", pathCertFile.string());
+        if (filesystem::exists(pathCertFile)) 
+            rpc_ssl_context->use_certificate_chain_file(pathCertFile.string());
+        else 
+            LogPrintf("ThreadRPCServer ERROR: missing server certificate file %s\n", pathCertFile.string());
 
         filesystem::path pathPKFile(GetArg("-rpcsslprivatekeyfile", "server.pem"));
         if (!pathPKFile.is_complete()) pathPKFile = filesystem::path(GetDataDir()) / pathPKFile;
-        if (filesystem::exists(pathPKFile)) rpc_ssl_context->use_private_key_file(pathPKFile.string(), ssl::context::pem);
-        else LogPrintf("ThreadRPCServer ERROR: missing server private key file %s\n", pathPKFile.string());
+        if (filesystem::exists(pathPKFile)) 
+            rpc_ssl_context->use_private_key_file(pathPKFile.string(), ssl::context::pem);
+        else 
+            LogPrintf("ThreadRPCServer ERROR: missing server private key file %s\n", pathPKFile.string());
 
         string strCiphers = GetArg("-rpcsslciphers", "TLSv1.2+HIGH:TLSv1+HIGH:!SSLv2:!aNULL:!eNULL:!3DES:@STRENGTH");
-        SSL_CTX_set_cipher_list(rpc_ssl_context->impl(), strCiphers.c_str());
+        SSL_CTX_set_cipher_list(rpc_ssl_context->native_handle(), strCiphers.c_str());
     }
 
     std::vector<ip::tcp::endpoint> vEndpoints;
@@ -755,7 +754,7 @@ void StartRPCThreads()
             straddress = bindAddress.to_string();
             LogPrintf("Binding RPC on address %s port %i (IPv4+IPv6 bind any: %i)\n", straddress, endpoint.port(), bBindAny);
             boost::system::error_code v6_only_error;
-            boost::shared_ptr<ip::tcp::acceptor> acceptor(new ip::tcp::acceptor(*rpc_io_service));
+            boost::shared_ptr<ip::tcp::acceptor> acceptor(new ip::tcp::acceptor(*rpc_io_context));
 
             acceptor->open(endpoint.protocol());
             acceptor->set_option(boost::asio::ip::tcp::acceptor::reuse_address(true));
@@ -791,33 +790,33 @@ void StartRPCThreads()
 
     rpc_worker_group = new boost::thread_group();
     for (int i = 0; i < GetArg("-rpcthreads", 4); i++)
-        rpc_worker_group->create_thread(boost::bind(&asio::io_service::run, rpc_io_service));
+        rpc_worker_group->create_thread(boost::bind(&asio::io_context::run, rpc_io_context));
     fRPCRunning = true;
 }
 
 void StartDummyRPCThread()
 {
-    if(rpc_io_service == NULL)
+    if(rpc_io_context == NULL)
     {
-        rpc_io_service = new asio::io_service();
+        rpc_io_context = new asio::io_context();
         /* Create dummy "work" to keep the thread from exiting when no timeouts active,
-         * see http://www.boost.org/doc/libs/1_51_0/doc/html/boost_asio/reference/io_service.html#boost_asio.reference.io_service.stopping_the_io_service_from_running_out_of_work */
-        rpc_dummy_work = new asio::io_service::work(*rpc_io_service);
+         * see http://www.boost.org/doc/libs/1_51_0/doc/html/boost_asio/reference/io_context.html#boost_asio.reference.io_context.stopping_the_io_context_from_running_out_of_work */
+        rpc_dummy_work = new asio::io_context::work(*rpc_io_context);
         rpc_worker_group = new boost::thread_group();
-        rpc_worker_group->create_thread(boost::bind(&asio::io_service::run, rpc_io_service));
+        rpc_worker_group->create_thread(boost::bind(&asio::io_context::run, rpc_io_context));
         fRPCRunning = true;
     }
 }
 
 void StopRPCThreads()
 {
-    if (rpc_io_service == NULL) return;
+    if (rpc_io_context == NULL) return;
     // Set this to false first, so that longpolling loops will exit when woken up
     fRPCRunning = false;
 
     // First, cancel all timers and acceptors
     // This is not done automatically by ->stop(), and in some cases the destructor of
-    // asio::io_service can hang if this is skipped.
+    // asio::io_context can hang if this is skipped.
     boost::system::error_code ec;
     BOOST_FOREACH(const boost::shared_ptr<ip::tcp::acceptor> &acceptor, rpc_acceptors)
     {
@@ -834,14 +833,14 @@ void StopRPCThreads()
     }
     deadlineTimers.clear();
 
-    rpc_io_service->stop();
+    rpc_io_context->stop();
     cvBlockChange.notify_all();
     if (rpc_worker_group != NULL)
         rpc_worker_group->join_all();
     delete rpc_dummy_work; rpc_dummy_work = NULL;
     delete rpc_worker_group; rpc_worker_group = NULL;
     delete rpc_ssl_context; rpc_ssl_context = NULL;
-    delete rpc_io_service; rpc_io_service = NULL;
+    delete rpc_io_context; rpc_io_context = NULL;
 }
 
 bool IsRPCRunning()
@@ -878,12 +877,12 @@ void RPCRunHandler(const boost::system::error_code& err, boost::function<void(vo
 
 void RPCRunLater(const std::string& name, boost::function<void(void)> func, int64_t nSeconds)
 {
-    assert(rpc_io_service != NULL);
+    assert(rpc_io_context != NULL);
 
     if (deadlineTimers.count(name) == 0)
     {
         deadlineTimers.insert(make_pair(name,
-                                        boost::shared_ptr<deadline_timer>(new deadline_timer(*rpc_io_service))));
+                                        boost::shared_ptr<deadline_timer>(new deadline_timer(*rpc_io_context))));
     }
     deadlineTimers[name]->expires_from_now(posix_time::seconds(nSeconds));
     deadlineTimers[name]->async_wait(boost::bind(RPCRunHandler, _1, func));
