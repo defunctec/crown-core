@@ -111,10 +111,10 @@ Object CallRPC(const string& strMethod, const Array& params)
 
     // Connect to localhost
     bool fUseSSL = GetBoolArg("-rpcssl", false);
-    asio::io_service io_service;
-    ssl::context context(io_service, ssl::context::sslv23);
-    context.set_options(ssl::context::no_sslv2 | ssl::context::no_sslv3);
-    asio::ssl::stream<asio::ip::tcp::socket> sslStream(io_service, context);
+    asio::io_context io_context;
+    ssl::context context(ssl::context::tlsv12);  // Modern secure context
+    context.set_options(ssl::context::default_workarounds | ssl::context::no_sslv2 | ssl::context::no_sslv3);
+    asio::ssl::stream<asio::ip::tcp::socket> sslStream(io_context, context);
     SSLIOStreamDevice<asio::ip::tcp> d(sslStream, fUseSSL);
     iostreams::stream< SSLIOStreamDevice<asio::ip::tcp> > stream(d);
 

@@ -21,6 +21,8 @@
 #include <boost/test/unit_test.hpp>
 #include <boost/thread.hpp>
 
+#include <iostream>
+
 extern CClientUIInterface uiInterface;
 extern CWallet* pwalletMain;
 
@@ -33,7 +35,9 @@ struct TestingSetup {
     boost::thread_group threadGroup;
 
     TestingSetup() {
+        LogTestMsg("Starting ECC...");
         ECC_Start();
+        LogTestMsg("ECC started.");
         SetupEnvironment();
         fPrintToDebugLog = false; // don't want to write to debug.log file
         fCheckBlockIndex = true;
@@ -78,6 +82,12 @@ struct TestingSetup {
 #endif
         boost::filesystem::remove_all(pathTemp);
     }
+
+void LogTestMsg(const std::string& msg) {
+if (fPrintToConsole) {
+        std::cout << "[TEST LOG] " << msg << std::endl;
+}
+}
 };
 
 BOOST_GLOBAL_FIXTURE(TestingSetup);

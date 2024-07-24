@@ -21,12 +21,16 @@
 #include "systemnodeman.h"
 #include "systemnode-sync.h"
 #include "util.h"
+#include <boost/bind/bind.hpp>
+#include <boost/bind/placeholders.hpp>
 
 #include <stdint.h>
 
 #include <QDateTime>
 #include <QDebug>
 #include <QTimer>
+
+using namespace boost::placeholders;
 
 static const int64_t nClientStartupTime = GetTime();
 

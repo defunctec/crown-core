@@ -1,6 +1,6 @@
-# Crown v0.14.0 "Emerald" Release Notes
+# Crown v0.14.5 "Emerald" Release Notes
 
-Crown Core v0.14.0 is a major release and a mandatory upgrade. 
+Crown Core v0.14.5 is a major release and a mandatory upgrade. 
 It is available for download from:
 
 https://www.crownplatform.com/wallet/

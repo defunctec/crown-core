@@ -59,23 +59,23 @@ void CSystemnodePing::Relay() const
     RelayInv(inv);
 }
 
-bool CSystemnodePing::CheckAndUpdate(int& nDos, bool fRequireEnabled, bool fCheckSigTimeOnly) const
+bool CSystemnodePing::CheckAndUpdate(int& nDoS, bool fRequireEnabled, bool fCheckSigTimeOnly) const
 {
     if (sigTime > GetAdjustedTime() + 60 * 60) {
         LogPrintf("CSystemnodePing::CheckAndUpdate - Signature rejected, too far into the future %s\n", vin.ToString());
-        nDos = 1;
+        nDoS = 1;
         return false;
     }
 
     if (sigTime <= GetAdjustedTime() - 60 * 60) {
         LogPrintf("CSystemnodePing::CheckAndUpdate - Signature rejected, too far into the past %s - %d %d \n", vin.ToString(), sigTime, GetAdjustedTime());
-        nDos = 1;
+        nDoS = 1;
         return false;
     }
 
     if(fCheckSigTimeOnly) {
         CSystemnode* psn = snodeman.Find(vin);
-        if(psn) return VerifySignature(psn->pubkey2, nDos);
+        if(psn) return VerifySignature(psn->pubkey2, nDoS);
         return true;
     }
 
@@ -92,7 +92,7 @@ bool CSystemnodePing::CheckAndUpdate(int& nDos, bool fRequireEnabled, bool fChec
         // last ping was more then SYSTEMNODE_MIN_MNP_SECONDS-60 ago comparing to this one
         if(!psn->IsPingedWithin(SYSTEMNODE_MIN_SNP_SECONDS - 60, sigTime))
         {
-            if(!VerifySignature(psn->pubkey2, nDos))
+            if(!VerifySignature(psn->pubkey2, nDoS))
                 return false;
 
             BlockMap::iterator mi = mapBlockIndex.find(blockHash);
@@ -132,7 +132,7 @@ bool CSystemnodePing::CheckAndUpdate(int& nDos, bool fRequireEnabled, bool fChec
             return true;
         }
         LogPrint("systemnode", "CSystemnodePing::CheckAndUpdate - Systemnode ping arrived too early, vin: %s\n", vin.ToString());
-        //nDos = 1; //disable, this is happening frequently and causing banned peers
+        //nDoS = 1; //disable, this is happening frequently and causing banned peers
         return false;
     }
     LogPrint("systemnode", "CSystemnodePing::CheckAndUpdate - Couldn't find compatible Systemnode entry, vin: %s\n", vin.ToString());
@@ -140,7 +140,7 @@ bool CSystemnodePing::CheckAndUpdate(int& nDos, bool fRequireEnabled, bool fChec
     return false;
 }
 
-bool CSystemnodePing::VerifySignature(const CPubKey& pubKeySystemnode, int &nDos) const
+bool CSystemnodePing::VerifySignature(const CPubKey& pubKeySystemnode, int &nDoS) const
 {
     std::string strMessage = vin.ToString() + blockHash.ToString() + boost::lexical_cast<std::string>(sigTime);
     std::string errorMessage = "";
@@ -148,7 +148,7 @@ bool CSystemnodePing::VerifySignature(const CPubKey& pubKeySystemnode, int &nDos
     if(!legacySigner.VerifyMessage(pubKeySystemnode, vchSig, strMessage, errorMessage))
     {
         LogPrintf("CSystemnodePing::VerifySignature - Got bad Systemnode ping signature %s Error: %s\n", vin.ToString(), errorMessage);
-        nDos = 33;
+        nDoS = 33;
         return false;
     }
     return true;
@@ -410,14 +410,14 @@ bool CSystemnode::GetRecentPaymentBlocks(std::vector<const CBlockIndex*>& vPayme
 // CSystemnodeBroadcast
 //
 
-bool CSystemnodeBroadcast::CheckAndUpdate(int& nDos) const
+bool CSystemnodeBroadcast::CheckAndUpdate(int& nDoS) const
 {
-    nDos = 0;
+    nDoS = 0;
 
     // make sure signature isn't in the future (past is OK)
     if (sigTime > GetAdjustedTime() + 60 * 60) {
         LogPrintf("snb - Signature rejected, too far into the future %s\n", vin.ToString());
-        nDos = 1;
+        nDoS = 1;
         return false;
     }
 
@@ -431,7 +431,7 @@ bool CSystemnodeBroadcast::CheckAndUpdate(int& nDos) const
 
     if (pubkeyScript.size() != 25) {
         LogPrintf("snb - pubkey the wrong size\n");
-        nDos = 100;
+        nDoS = 100;
         return false;
     }
 
@@ -440,7 +440,7 @@ bool CSystemnodeBroadcast::CheckAndUpdate(int& nDos) const
 
     if (pubkeyScript2.size() != 25) {
         LogPrintf("snb - pubkey2 the wrong size\n");
-        nDos = 100;
+        nDoS = 100;
         return false;
     }
 
@@ -450,7 +450,7 @@ bool CSystemnodeBroadcast::CheckAndUpdate(int& nDos) const
     }
 
     // incorrect ping or its sigTime
-    if (lastPing == CSystemnodePing() || !lastPing.CheckAndUpdate(nDos, false, true))
+    if (lastPing == CSystemnodePing() || !lastPing.CheckAndUpdate(nDoS, false, true))
         return false;
 
     std::string strMessage;
@@ -499,7 +499,7 @@ bool CSystemnodeBroadcast::CheckAndUpdate(int& nDos) const
 
         if (!legacySigner.VerifyMessage(pubkey, sig, strMessage, errorMessage)) {
             LogPrintf("snb - Got bad systemnode address signature, error: %s\n", errorMessage);
-            nDos = 100;
+            nDoS = 100;
             return false;
         }
     }
@@ -529,7 +529,7 @@ bool CSystemnodeBroadcast::CheckAndUpdate(int& nDos) const
     }
 
     // search existing systemnode list, this is where we update existing Systemnodes with new snb broadcasts
-    CSystemnode* psn = snodeman.Find(vin);
+    psn = snodeman.Find(vin);
 
     // no such systemnode, nothing to update
     if (psn == NULL) return true;
@@ -605,7 +605,7 @@ bool CSystemnodeBroadcast::CheckInputsAndAdd(int& nDoS) const
         }
 
         if (!AcceptableInputs(mempool, state, CTransaction(tx), false, NULL)) {
-            // set nDos
+            // set nDoS
             state.IsInvalid(nDoS);
             return false;
         }

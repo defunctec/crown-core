@@ -12,6 +12,9 @@
 #include "transactionrecord.h"
 #include "walletmodel.h"
 
+#include <boost/bind/bind.hpp>
+#include <boost/bind/placeholders.hpp>
+
 #include "main.h"
 #include "sync.h"
 #include "uint256.h"
@@ -23,6 +26,8 @@
 #include <QDebug>
 #include <QIcon>
 #include <QList>
+
+using namespace boost::placeholders;
 
 // Amount column is right-aligned it contains numbers
 static int column_alignments[] = {

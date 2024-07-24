@@ -10,6 +10,9 @@
 #include "recentrequeststablemodel.h"
 #include "transactiontablemodel.h"
 
+#include <boost/bind/bind.hpp>
+#include <boost/bind/placeholders.hpp>
+
 #include "base58.h"
 #include "db.h"
 #include "keystore.h"
@@ -26,6 +29,7 @@
 #include <QSet>
 #include <QTimer>
 
+using namespace boost::placeholders;
 using namespace std;
 
 WalletModel::WalletModel(CWallet *wallet, OptionsModel *optionsModel, QObject *parent) :

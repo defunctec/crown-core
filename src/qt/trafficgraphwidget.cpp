@@ -5,6 +5,7 @@
 #include "trafficgraphwidget.h"
 #include "clientmodel.h"
 
+#include <QPainterPath> 
 #include <QPainter>
 #include <QColor>
 #include <QTimer>
@@ -64,6 +65,8 @@ void TrafficGraphWidget::paintEvent(QPaintEvent *)
 {
     QPainter painter(this);
     painter.fillRect(rect(), Qt::black);
+
+    QPainterPath p;
 
     if(fMax <= 0.0f) return;
 

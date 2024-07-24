@@ -1,4 +1,4 @@
-# Crown Platform 0.14.0
+# Crown Platform 0.14.5
 
 [Crown software](https://crownplatform.com/wallet) is an implementation of a full Crown Platform node, which can be used both locally, as a wallet for CRW and for running Masternodes and Systemnodes. It is a full node:  it downloads and stores the entire history of Crown transactions (which is currently several GBs); depending on the speed of your computer and network connection, the synchronization process can take anywhere from a few hours to a day or more. If you would like the process to go faster you can _download the blockchain directly_ **(BOOSTRAP LINK NEEDED)**.
 
