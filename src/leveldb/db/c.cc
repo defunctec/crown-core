@@ -2,19 +2,19 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-#include "leveldb/c.h"
+#include "../include/leveldb/c.h"
 
 #include <stdlib.h>
 #include <unistd.h>
-#include "leveldb/cache.h"
-#include "leveldb/comparator.h"
-#include "leveldb/db.h"
-#include "leveldb/env.h"
-#include "leveldb/filter_policy.h"
-#include "leveldb/iterator.h"
-#include "leveldb/options.h"
-#include "leveldb/status.h"
-#include "leveldb/write_batch.h"
+#include "../include/leveldb/cache.h"
+#include "../include/leveldb/comparator.h"
+#include "../include/leveldb/db.h"
+#include "../include/leveldb/env.h"
+#include "../include/leveldb/filter_policy.h"
+#include "../include/leveldb/iterator.h"
+#include "../include/leveldb/options.h"
+#include "../include/leveldb/status.h"
+#include "../include/leveldb/write_batch.h"
 
 using leveldb::Cache;
 using leveldb::Comparator;

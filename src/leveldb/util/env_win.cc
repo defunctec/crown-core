@@ -8,11 +8,11 @@
 #include <map>
 
 
-#include "leveldb/env.h"
+#include "../include/leveldb/env.h"
 
-#include "port/port.h"
-#include "leveldb/slice.h"
-#include "util/logging.h"
+#include "../port/port.h"
+#include "../include/leveldb/slice.h"
+#include "logging.h"
 
 #include <shlwapi.h>
 #include <process.h>

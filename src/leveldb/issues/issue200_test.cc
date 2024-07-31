@@ -6,8 +6,8 @@
 // to forward, the current key can be yielded unexpectedly if a new
 // mutation has been added just before the current key.
 
-#include "leveldb/db.h"
-#include "util/testharness.h"
+#include "../include/leveldb/db.h"
+#include "../util/testharness.h"
 
 namespace leveldb {
 

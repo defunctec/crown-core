@@ -2,17 +2,17 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-#include "db/db_iter.h"
+#include "db_iter.h"
 
-#include "db/filename.h"
-#include "db/db_impl.h"
-#include "db/dbformat.h"
-#include "leveldb/env.h"
-#include "leveldb/iterator.h"
-#include "port/port.h"
-#include "util/logging.h"
-#include "util/mutexlock.h"
-#include "util/random.h"
+#include "filename.h"
+#include "db_impl.h"
+#include "dbformat.h"
+#include "../include/leveldb/env.h"
+#include "../include/leveldb/iterator.h"
+#include "../port/port.h"
+#include "../util/logging.h"
+#include "../util/mutexlock.h"
+#include "../util/random.h"
 
 namespace leveldb {
 
