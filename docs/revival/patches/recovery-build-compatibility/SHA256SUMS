@@ -1,0 +1,5 @@
+09cb75dff41b5502d0bc9207ce633730ca8b86c741b1d3155b2259ba1893716a  /home/runner/work/crown-core/crown-core/docs/revival/patches/recovery-build-compatibility/recovery-build-compatibility.patch
+c85383d56025bb7bb2f4a7ff80c6416a7af979d3ca51fac3fdc0478173752cb2  /home/runner/work/crown-core/crown-core/docs/revival/patches/recovery-build-compatibility/recovery-build-compatibility.bundle
+e101fe890efe455e36e42e80286d5f3e01c684bb185fcb30d498cac7eeac0a8f  /home/runner/work/crown-core/crown-core/docs/revival/patches/recovery-build-compatibility/format-patch/0001-chore-checkpoint-secp256k1-openssl-test-patch.patch
+57c30568d8905995efc943fc11a9abba899a9e2e4126bc207203c0cdd94dd5cd  /home/runner/work/crown-core/crown-core/docs/revival/patches/recovery-build-compatibility/format-patch/0002-docs-add-secp256k1-openssl-compatibility-audit.patch
+101aa9146f8b78dfe4c5289db5ee05ec1e7fcf2ded4f3859ec3eb278b95e625e  /home/runner/work/crown-core/crown-core/docs/revival/patches/recovery-build-compatibility/format-patch/0003-chore-reconstruct-recovery-baseline-changes.patch
