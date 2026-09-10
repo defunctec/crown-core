@@ -111,7 +111,15 @@ public:
     bool connect(const std::string& server, const std::string& port)
     {
         using namespace boost::asio::ip;
+#if BOOST_VERSION >= 107000
+        // Newer Boost.Asio removed get_io_service(); the resolver still needs
+        // to live on the same I/O context as the socket.
+        boost::asio::io_context& io_context =
+            static_cast<boost::asio::io_context&>(stream.lowest_layer().get_executor().context());
+        tcp::resolver resolver(io_context);
+#else
         tcp::resolver resolver(stream.get_io_service());
+#endif
         tcp::resolver::iterator endpoint_iterator;
 #if BOOST_VERSION >= 104300
         try {

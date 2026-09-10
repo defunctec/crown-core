@@ -28,6 +28,12 @@ std::vector<BudgetDraftBroadcast> vecImmatureBudgetDrafts;
 
 namespace
 {
+    bool UseMainLikeUnitTestBudgetParameters()
+    {
+        return Params().NetworkID() == CBaseChainParams::MAIN ||
+               Params().NetworkID() == CBaseChainParams::UNITTEST;
+    }
+
     CBitcoinAddress ScriptToAddress(const CScript& script)
     {
         CTxDestination destination;
@@ -76,7 +82,7 @@ CAmount BlocksBeforeSuperblockToSubmitBudgetDraft()
 
     // Relatively 43200 / 30 = 1440, for testnet  - equal to budget payment cycle
 
-    if (Params().NetworkID() == CBaseChainParams::MAIN)
+    if (UseMainLikeUnitTestBudgetParameters())
         return 1440 * 2;   // aprox 2 days
     else
         return GetBudgetPaymentCycleBlocks() - 10; // 40 blocks for 50-block cycle
@@ -87,7 +93,7 @@ int GetBudgetPaymentCycleBlocks()
 {
     // Amount of blocks in a months period of time (using 1 minutes per) = (60*24*30)/1
 
-    if(Params().NetworkID() == CBaseChainParams::MAIN)
+    if(UseMainLikeUnitTestBudgetParameters())
         return 43200;
     else
         return 50; //for testing purposes
@@ -95,7 +101,7 @@ int GetBudgetPaymentCycleBlocks()
 
 CAmount GetVotingThreshold()
 {
-    if (Params().NetworkID() == CBaseChainParams::MAIN)
+    if (UseMainLikeUnitTestBudgetParameters())
         return BlocksBeforeSuperblockToSubmitBudgetDraft();
     else
         return BlocksBeforeSuperblockToSubmitBudgetDraft() / 4; // 10 blocks for 50-block cycle
@@ -720,7 +726,7 @@ CAmount CBudgetManager::GetTotalBudget(int nHeight)
     nSubsidy >>= halvings;
 
     // Amount of blocks in a months period of time (using 1 minutes per) = (60*24*30)/1
-    if(Params().NetworkID() == CBaseChainParams::MAIN)
+    if(UseMainLikeUnitTestBudgetParameters())
         return ((nSubsidy / 100) * 25) * 1440 * 30;
 
     //for testing purposes
@@ -2376,5 +2382,4 @@ std::string CBudgetManager::ToString() const
 
     return info.str();
 }
-
 

@@ -30,6 +30,7 @@
 #include <boost/iostreams/stream.hpp>
 #include <boost/shared_ptr.hpp>
 #include <boost/thread.hpp>
+#include <openssl/err.h>
 #include "json/json_spirit_writer_template.h"
 
 using namespace boost;
@@ -52,6 +53,11 @@ static boost::thread_group* rpc_worker_group = NULL;
 static boost::asio::io_service::work *rpc_dummy_work = NULL;
 static std::vector<CSubNet> rpc_allow_subnets; //!< List of subnets to allow RPC connections from
 static std::vector< boost::shared_ptr<ip::tcp::acceptor> > rpc_acceptors;
+
+bool SetRPCSSLCipherList(ssl::context& context, const std::string& strCiphers)
+{
+    return SSL_CTX_set_cipher_list(context.native_handle(), strCiphers.c_str()) == 1;
+}
 
 void RPCTypeCheck(const Array& params,
                   const list<Value_type>& typesExpected,
@@ -576,7 +582,13 @@ static void RPCListen(boost::shared_ptr< basic_socket_acceptor<Protocol, SocketA
                    const bool fUseSSL)
 {
     // Accept connection
+#if BOOST_VERSION >= 107000
+    boost::asio::io_context& io_context =
+        static_cast<boost::asio::io_context&>(acceptor->get_executor().context());
+    boost::shared_ptr< AcceptedConnectionImpl<Protocol> > conn(new AcceptedConnectionImpl<Protocol>(io_context, context, fUseSSL));
+#else
     boost::shared_ptr< AcceptedConnectionImpl<Protocol> > conn(new AcceptedConnectionImpl<Protocol>(acceptor->get_io_service(), context, fUseSSL));
+#endif
 
     acceptor->async_accept(
             conn->sslStream.lowest_layer(),
@@ -688,7 +700,7 @@ void StartRPCThreads()
 
     assert(rpc_io_service == NULL);
     rpc_io_service = new asio::io_service();
-    rpc_ssl_context = new ssl::context(*rpc_io_service, ssl::context::sslv23);
+    rpc_ssl_context = new ssl::context(ssl::context::sslv23);
 
     const bool fUseSSL = GetBoolArg("-rpcssl", false);
 
@@ -707,7 +719,15 @@ void StartRPCThreads()
         else LogPrintf("ThreadRPCServer ERROR: missing server private key file %s\n", pathPKFile.string());
 
         string strCiphers = GetArg("-rpcsslciphers", "TLSv1.2+HIGH:TLSv1+HIGH:!SSLv2:!aNULL:!eNULL:!3DES:@STRENGTH");
-        SSL_CTX_set_cipher_list(rpc_ssl_context->impl(), strCiphers.c_str());
+        if (!SetRPCSSLCipherList(*rpc_ssl_context, strCiphers)) {
+            const unsigned long sslError = ERR_get_error();
+            const std::string sslErrorString = sslError != 0 ? ERR_error_string(sslError, NULL) : "unknown OpenSSL error";
+            const std::string message = strprintf("Invalid -rpcsslciphers setting '%s': %s", strCiphers, sslErrorString);
+            LogPrintf("ThreadRPCServer ERROR: %s\n", message);
+            uiInterface.ThreadSafeMessageBox(message, "", CClientUIInterface::MSG_ERROR);
+            StartShutdown();
+            return;
+        }
     }
 
     std::vector<ip::tcp::endpoint> vEndpoints;

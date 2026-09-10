@@ -595,19 +595,19 @@ bool CMasternodeBroadcast::CheckAndUpdate(int& nDos) const
     } else if(addr.GetPort() == 9340) return false;
 
     // Setting pmn to the masternode found using the given IPv4 address
-    CMasternode* pmn = mnodeman.Find(addr);
+    CMasternode* pmnByAddr = mnodeman.Find(addr);
 
     // Check if the IPv4 address is found and the vin obtained from the corresponding IPv4 address
     // does not match the vin of the masternode attempting to broadcast
-    if (pmn && pmn->vin != vin) {
+    if (pmnByAddr && pmnByAddr->vin != vin) {
         // Check if found Masternode is enabled and online
-        if (pmn->IsEnabled()) {
+        if (pmnByAddr->IsEnabled()) {
         // Check if the signing time of the new broadcast is later than the signing time of the initial broadcast
         // to enable the found masternode. If the new broadcast is more recent, it could be malicious and should be banned.
-            if (sigTime > pmn->sigTime) {
+            if (sigTime > pmnByAddr->sigTime) {
                 LogPrintf("CMasternodeBroadcast::CheckAndUpdate -- IP address already in use by another enabled masternode %s\n", addr.ToString());
                 // Increment DoS score for duplicate IP
-                nDoS = 33;
+                nDos = 33;
                 // Stop the node from broadcasting and ultimately enforcing unique IPv4
                 return false;
             }

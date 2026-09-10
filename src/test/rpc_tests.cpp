@@ -8,6 +8,7 @@
 #include "base58.h"
 #include "netbase.h"
 
+#include <boost/asio/ssl/context.hpp>
 #include <boost/algorithm/string.hpp>
 #include <boost/test/unit_test.hpp>
 
@@ -170,6 +171,14 @@ BOOST_AUTO_TEST_CASE(rpc_boostasiotocnetaddr)
     BOOST_CHECK_EQUAL(BoostAsioToCNetAddr(boost::asio::ip::address::from_string("::0:127.0.0.1")).ToString(), "127.0.0.1");
     // v4 mapped must be interpreted as IPv4
     BOOST_CHECK_EQUAL(BoostAsioToCNetAddr(boost::asio::ip::address::from_string("::ffff:127.0.0.1")).ToString(), "127.0.0.1");
+}
+
+BOOST_AUTO_TEST_CASE(rpc_ssl_cipher_validation)
+{
+    boost::asio::ssl::context context(boost::asio::ssl::context::sslv23);
+
+    BOOST_CHECK(SetRPCSSLCipherList(context, "HIGH"));
+    BOOST_CHECK(!SetRPCSSLCipherList(context, "this-cipher-suite-does-not-exist"));
 }
 
 BOOST_AUTO_TEST_SUITE_END()
