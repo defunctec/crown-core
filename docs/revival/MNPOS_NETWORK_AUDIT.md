@@ -113,7 +113,7 @@ All datadirs were disposable under `/tmp/crown-phase1d`.
 ## Masternode setup
 
 - `masternode start` path was attempted earlier during phase execution but collateral requirement was not met. **OBSERVED AT RUNTIME**
-- In this phase run, no active masternode was reached due collateral economics on fresh regtest. **OBSERVED AT RUNTIME**
+- In this phase run, no active masternode was reached due to collateral economics on fresh regtest. **OBSERVED AT RUNTIME**
 - Eligibility for MNPoS as masternode: **NOT ACHIEVED** in runtime.
 
 ## Systemnode setup

@@ -45,16 +45,25 @@ CFG
 for n in "${NODES[@]}"; do
   write_conf "$n"
   "$BIN_DIR/crownd" -datadir="$ROOT/$n" >/dev/null
+  datadir="$ROOT/$n"
+  rpc_unreachable=1
   ready=0
   for _ in $(seq 1 60); do
     if "$BIN_DIR/crown-cli" -datadir="$ROOT/$n" -rpcuser="$RPC_USER" -rpcpassword="$RPC_PASS" getblockcount >/dev/null 2>&1; then
       ready=1
+      rpc_unreachable=0
       break
+    fi
+    if ! ps -eo args | grep -F "crownd -datadir=$datadir" | grep -v grep >/dev/null; then
+      echo "Node '$n' exited before RPC became ready (datadir=$datadir)" >&2
+      exit 1
     fi
     sleep 1
   done
   if [ "$ready" -ne 1 ]; then
-    echo "Failed to start node '$n' (RPC not ready)" >&2
+    if [ "$rpc_unreachable" -eq 1 ]; then
+      echo "Failed to start node '$n' (RPC not ready after 60s, datadir=$datadir)" >&2
+    fi
     exit 1
   fi
 done

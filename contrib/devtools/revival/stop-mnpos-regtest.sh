@@ -11,12 +11,30 @@ for n in "${NODES[@]}"; do
 done
 sleep 3
 
-mapfile -t pids < <(ps -eo pid,args | awk -v root="$ROOT/" '$0 ~ /crownd -datadir=/ && index($0, root) {print $1}')
+match_datadir() {
+  local args="$1"
+  for n in "${NODES[@]}"; do
+    if [[ "$args" == *"crownd -datadir=$ROOT/$n"* ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+mapfile -t pids < <(while read -r pid args; do
+  if match_datadir "$args"; then
+    echo "$pid"
+  fi
+done < <(ps -eo pid=,args=))
 if [ "${#pids[@]}" -gt 0 ]; then
   kill "${pids[@]}" >/dev/null 2>&1 || true
   sleep 2
 fi
-mapfile -t pids2 < <(ps -eo pid,args | awk -v root="$ROOT/" '$0 ~ /crownd -datadir=/ && index($0, root) {print $1}')
+mapfile -t pids2 < <(while read -r pid args; do
+  if match_datadir "$args"; then
+    echo "$pid"
+  fi
+done < <(ps -eo pid=,args=))
 if [ "${#pids2[@]}" -gt 0 ]; then
   kill -9 "${pids2[@]}" >/dev/null 2>&1 || true
 fi
