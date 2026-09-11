@@ -148,32 +148,66 @@ Each matrix job now reports:
 - chosen `MAKEJOBS`
 - end-of-build ccache statistics
 
-## Cold and warm expectations
+## Cold and warm benchmark
 
-### Cold run
+Executed benchmark HEAD:
 
-Observed effective-cold baseline before this change:
+- `ebe3806dd2622a55934fc2f7d1fabebe2ace3489`
 
-- depends sources: miss
-- built depends cache: effectively invalidated by Crown source tree changes
-- ccache: not present
-- total duration: see baseline table above
+Workflow runs used:
 
-### Warm run
+- cold population run: `34621752183`, attempt 1
+- warm rerun on exact same HEAD: `34621752183`, attempt 2
 
-Expected behaviour for a repeat run with matching host/toolchain/depends definitions:
+### Comparison table
 
-- depends source cache: hit
-- built depends cache: hit
-- ccache: hit
+| Target | Old baseline | New cold | New warm | Time saved vs old | Depends cache | ccache |
+| --- | ---: | ---: | ---: | ---: | --- | --- |
+| Linux x64 | 40:26 | 18:12 | 1:46 | 38:40 | cold MISS / warm HIT | cold 36 hits, 442 misses; warm 478 hits, 0 misses |
+| Linux x86 | 30:36 | 17:13 | 1:36 | 29:00 | cold MISS / warm HIT | cold 32 hits, 439 misses; warm 471 hits, 0 misses |
+| Windows x64 | 43:23 | 24:24 | 2:46 | 40:37 | cold MISS / warm HIT | cold 19 hits, 351 misses; warm 370 hits, 0 misses |
+| Windows x86 | 42:54 | 23:54 | 2:04 | 40:50 | cold MISS / warm HIT | cold 19 hits, 351 misses; warm 370 hits, 0 misses |
+| ARM | 12:09 | 9:18 | 1:30 | 10:39 | cold MISS / warm HIT | cold 32 hits, 315 misses; warm 347 hits, 0 misses |
 
-Expected impact:
+### Summary
 
-- source archive download should drop to near-zero
-- depends should avoid needless rebuild/repack work when the cached `${host}` prefix and built tarballs match
-- repeated Crown C/C++ compilations should show ccache hits and materially lower compile time
+- worst old baseline duration: **43:23**
+- worst new cold duration: **24:24**
+- worst new warm duration: **2:46**
+- median warm duration: **1:46**
+- approximate worst-case improvement: **~93.6%**
 
-Warm timings were not directly re-measured inside this task run, so the first post-change warmed workflow run should be used as the acceptance measurement.
+### Cold run details
+
+The first corrected run populated the new caches successfully on all five targets.
+
+| Target | Result | Total | Install/setup | Depends prep/build | Crown build | Depends source cache | Built depends cache | ccache restore | ccache stats |
+| --- | --- | ---: | ---: | ---: | ---: | --- | --- | --- | --- |
+| Linux x64 | success | 18:12 | 0:49 | 11:08 | 5:25 | MISS | MISS | MISS | 21 direct + 15 preprocessed hits, 442 misses, 67.3 MB |
+| Linux x86 | success | 17:13 | 0:39 | 10:35 | 5:17 | MISS | MISS | MISS | 21 direct + 11 preprocessed hits, 439 misses, 56.7 MB |
+| Windows x64 | success | 24:24 | 1:38 | 13:53 | 8:06 | MISS | MISS | MISS | 0 direct + 19 preprocessed hits, 351 misses, 68.1 MB |
+| Windows x86 | success | 23:54 | 0:44 | 13:13 | 9:11 | MISS | MISS | MISS | 0 direct + 19 preprocessed hits, 351 misses, 55.4 MB |
+| ARM | success | 9:18 | 0:31 | 3:38 | 4:32 | MISS | MISS | MISS | 21 direct + 11 preprocessed hits, 315 misses, 47.3 MB |
+
+### Warm run details
+
+The exact same workflow was rerun on the exact same HEAD after cache save completion.
+
+| Target | Result | Total | Install/setup | Depends prep/build | Crown build | Depends source cache | Built depends cache | ccache restore | ccache stats |
+| --- | --- | ---: | ---: | ---: | ---: | --- | --- | --- | --- |
+| Linux x64 | success | 1:46 | 0:27 | 0:04 | 0:36 | HIT | HIT | HIT | 476 direct + 2 preprocessed hits, 0 misses, 67.3 MB |
+| Linux x86 | success | 1:36 | 0:26 | 0:05 | 0:38 | HIT | HIT | HIT | 469 direct + 2 preprocessed hits, 0 misses, 56.7 MB |
+| Windows x64 | success | 2:46 | 0:56 | 0:04 | 1:09 | HIT | HIT | HIT | 369 direct + 1 preprocessed hits, 0 misses, 68.1 MB |
+| Windows x86 | success | 2:04 | 0:34 | 0:02 | 0:51 | HIT | HIT | HIT | 369 direct + 1 preprocessed hits, 0 misses, 55.4 MB |
+| ARM | success | 1:30 | 0:28 | 0:03 | 0:33 | HIT | HIT | HIT | 345 direct + 2 preprocessed hits, 0 misses, 47.3 MB |
+
+Warm-run verification:
+
+- depends source cache restored: **YES**
+- built depends-prefix cache restored: **YES**
+- ccache restored: **YES**
+- ccache hits > 0 on all five targets: **YES**
+- dependencies unnecessarily rebuilt on warm run: **NO**
 
 ## Incremental agent/developer build guidance
 
@@ -204,15 +238,11 @@ Only perform a clean/full rebuild when needed for final acceptance or when build
 
 ## Matrix results
 
-Current measured pre-change matrix baseline from run `34607908566`:
-
-| Target | Result |
-| --- | --- |
-| Linux x86_64 | success |
-| Linux i686 | success |
-| Windows x86_64 | success |
-| Windows i686 | success |
-| ARM / Raspberry Pi | success |
+| Benchmark phase | Linux x86_64 | Linux i686 | Windows x86_64 | Windows i686 | ARM / Raspberry Pi |
+| --- | --- | --- | --- | --- | --- |
+| Old baseline (`34607908566`) | success | success | success | success | success |
+| New cold (`34621752183`, attempt 1) | success | success | success | success | success |
+| New warm (`34621752183`, attempt 2) | success | success | success | success | success |
 
 ## Known limitations
 
