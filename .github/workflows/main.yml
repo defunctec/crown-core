@@ -10,9 +10,11 @@ permissions:
 
 env:
   RELEASE_VERSION: "0.14.0.7"
-  MAKEJOBS: "-j4"
   SDK_URL: "https://bitcoincore.org/depends-sources/sdks"
   WINEDEBUG: "fixme-all"
+  DEPENDS_CACHE_VERSION: "v2"
+  CCACHE_CACHE_VERSION: "v1"
+  CCACHE_MAXSIZE: "750M"
 
 jobs:
   build:
@@ -95,20 +97,94 @@ jobs:
           if [ -n "${{ matrix.packages }}" ]; then
             export DEBIAN_FRONTEND=noninteractive
             apt-get update
-            apt-get install --no-install-recommends --no-upgrade -y ${{ matrix.packages }}
+            apt-get install --no-install-recommends --no-upgrade -y ccache ${{ matrix.packages }}
           fi
 
-      - name: Restore depends cache
+      - name: Configure build tuning
+        run: |
+          echo "MAKEJOBS=-j$(nproc)" >> "$GITHUB_ENV"
+          echo "BUILD_JOBS=$(nproc)" >> "$GITHUB_ENV"
+          echo "CCACHE_DIR=$GITHUB_WORKSPACE/.ccache/${{ matrix.host }}" >> "$GITHUB_ENV"
+          echo "CCACHE_BASEDIR=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+          echo "CCACHE_COMPILERCHECK=content" >> "$GITHUB_ENV"
+          echo "CCACHE_MAXSIZE=${CCACHE_MAXSIZE}" >> "$GITHUB_ENV"
+          mkdir -p "$GITHUB_WORKSPACE/.ccache/${{ matrix.host }}"
+
+      - name: Compute cache identities
+        id: cache-ids
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          read_var() {
+            local key="$1"
+            local value
+            value="$(make -s -C depends HOST=${{ matrix.host }} "print-${key}")"
+            printf '%s\n' "${value#${key}=}"
+          }
+
+          toolchain_id() {
+            env \
+              CC="$1" \
+              C_STANDARD=c99 \
+              CXX="$2" \
+              CXX_STANDARD=c++11 \
+              AR="$3" \
+              NM="$4" \
+              RANLIB="$5" \
+              STRIP="$6" \
+              SHA256SUM=sha256sum \
+              ./depends/gen_id "$7"
+          }
+
+          build_cc="$(read_var build_CC)"
+          build_cxx="$(read_var build_CXX)"
+          build_ar="$(read_var build_AR)"
+          build_nm="$(read_var build_NM)"
+          build_ranlib="$(read_var build_RANLIB)"
+          build_strip="$(read_var build_STRIP)"
+
+          host_cc="$(read_var host_CC)"
+          host_cxx="$(read_var host_CXX)"
+          host_ar="$(read_var host_AR)"
+          host_nm="$(read_var host_NM)"
+          host_ranlib="$(read_var host_RANLIB)"
+          host_strip="$(read_var host_STRIP)"
+
+          echo "build_toolchain_id=$(toolchain_id "$build_cc" "$build_cxx" "$build_ar" "$build_nm" "$build_ranlib" "$build_strip" "build=${{ matrix.host }}")" >> "$GITHUB_OUTPUT"
+          echo "host_toolchain_id=$(toolchain_id "$host_cc" "$host_cxx" "$host_ar" "$host_nm" "$host_ranlib" "$host_strip" "host=${{ matrix.host }}")" >> "$GITHUB_OUTPUT"
+          echo "container_id=$(printf '%s' '${{ matrix.container }}' | sha256sum | cut -c1-16)" >> "$GITHUB_OUTPUT"
+          echo "packages_id=$(printf '%s' '${{ matrix.packages }}' | sha256sum | cut -c1-16)" >> "$GITHUB_OUTPUT"
+          echo "dep_opts_id=$(printf '%s' '${{ matrix.dep_opts }}' | sha256sum | cut -c1-16)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore depends source cache
+        id: cache-depends-sources
         uses: actions/cache@v4
         with:
           path: |
-            depends/built
+            depends/sources
             depends/sdk-sources
-          key: crown-depends-${{ matrix.host }}-${{ hashFiles('depends/packages/**', 'depends/**/packages.mk', 'Makefile.am', 'configure.ac', 'src/**') }}
+          key: crown-depends-sources-${{ env.DEPENDS_CACHE_VERSION }}-${{ matrix.host }}-${{ hashFiles('depends/Makefile', 'depends/funcs.mk', 'depends/config.site.in', 'depends/builders/**', 'depends/hosts/**', 'depends/packages/**', 'depends/patches/**') }}
+
+      - name: Restore built depends cache
+        id: cache-depends-prefix
+        uses: actions/cache@v4
+        with:
+          path: |
+            depends/built/${{ matrix.host }}
+            depends/${{ matrix.host }}
+          key: crown-depends-prefix-${{ env.DEPENDS_CACHE_VERSION }}-${{ runner.os }}-${{ steps.cache-ids.outputs.container_id }}-${{ matrix.host }}-${{ steps.cache-ids.outputs.packages_id }}-${{ steps.cache-ids.outputs.dep_opts_id }}-${{ steps.cache-ids.outputs.build_toolchain_id }}-${{ steps.cache-ids.outputs.host_toolchain_id }}-${{ hashFiles('depends/Makefile', 'depends/funcs.mk', 'depends/config.site.in', 'depends/builders/**', 'depends/hosts/**', 'depends/packages/**', 'depends/patches/**') }}
+
+      - name: Restore ccache
+        id: cache-ccache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: crown-ccache-${{ env.CCACHE_CACHE_VERSION }}-${{ runner.os }}-${{ steps.cache-ids.outputs.container_id }}-${{ matrix.host }}-${{ steps.cache-ids.outputs.host_toolchain_id }}-${{ hashFiles('configure.ac', 'Makefile.am', 'src/**', 'qt/**', 'share/**', 'depends/config.site.in') }}
 
       - name: Prepare depends & SDK
         run: |
-          mkdir -p depends/SDKs depends/sdk-sources out
+          mkdir -p depends/SDKs depends/sdk-sources depends/sources out "$CCACHE_DIR"
           if [ -n "${OSX_SDK}" ] && [ ! -f depends/sdk-sources/MacOSX${OSX_SDK}.sdk.tar.gz ]; then
             curl -Lf $SDK_URL/MacOSX${OSX_SDK}.sdk.tar.gz -o depends/sdk-sources/MacOSX${OSX_SDK}.sdk.tar.gz
           fi
@@ -116,6 +192,28 @@ jobs:
             tar -C depends/SDKs -xf depends/sdk-sources/MacOSX${OSX_SDK}.sdk.tar.gz
           fi
           make $MAKEJOBS -C depends HOST=${{ matrix.host }} ${{ matrix.dep_opts }}
+
+      - name: Report cache status
+        run: |
+          echo "Target host: ${{ matrix.host }}"
+          echo "Using MAKEJOBS=$MAKEJOBS (nproc=$BUILD_JOBS)"
+          echo "Depends source cache hit: ${{ steps.cache-depends-sources.outputs.cache-hit }}"
+          echo "Built depends cache hit: ${{ steps.cache-depends-prefix.outputs.cache-hit }}"
+          echo "ccache cache hit: ${{ steps.cache-ccache.outputs.cache-hit }}"
+          {
+            echo "### Cache status"
+            echo "- target: \`${{ matrix.host }}\`"
+            echo "- MAKEJOBS: \`$MAKEJOBS\` (nproc=\`$BUILD_JOBS\`)"
+            echo "- depends sources cache hit: \`${{ steps.cache-depends-sources.outputs.cache-hit }}\`"
+            echo "- built depends cache hit: \`${{ steps.cache-depends-prefix.outputs.cache-hit }}\`"
+            echo "- ccache restore hit: \`${{ steps.cache-ccache.outputs.cache-hit }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Reset ccache statistics
+        run: |
+          echo "PATH=/usr/lib/ccache:/usr/lib64/ccache:$PATH" >> "$GITHUB_ENV"
+          ccache --zero-stats || true
+          ccache --max-size "$CCACHE_MAXSIZE"
 
       - name: Build Crown
         run: |
@@ -131,6 +229,18 @@ jobs:
           cd crown-${{ matrix.host }}
           ./configure --cache-file=../config.cache $CROWN_CONFIG_ALL ${{ matrix.crown_config }}
           make $MAKEJOBS ${{ matrix.goal }} || ( make ${{ matrix.goal }} V=1 ; false )
+
+      - name: Print ccache statistics
+        if: always()
+        run: |
+          ccache --show-stats --verbose || ccache --show-stats || true
+          {
+            echo
+            echo "### ccache statistics"
+            echo '```'
+            ccache --show-stats || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
