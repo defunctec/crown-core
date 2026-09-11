@@ -70,7 +70,7 @@ for n in "${NODES[@]}"; do
       fi
       break
     fi
-    if [ -n "$pid" ] && ! ps -p "$pid" -o comm= 2>/dev/null | grep -q '^crownd$'; then
+    if [ -n "$pid" ] && ! kill -0 "$pid" 2>/dev/null; then
       echo "Node '$n' exited before RPC became ready (datadir=$datadir)" >&2
       exit 1
     fi
