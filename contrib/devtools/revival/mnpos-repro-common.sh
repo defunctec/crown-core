@@ -45,19 +45,19 @@ restart_node() {
 
 reconnect_topology() {
   local root="$1"
-  rpc "$root" ctl addnode 127.0.0.1:24002 add >/dev/null || true
-  rpc "$root" ctl addnode 127.0.0.1:24003 add >/dev/null || true
-  rpc "$root" ctl addnode 127.0.0.1:24004 add >/dev/null || true
-  rpc "$root" mn1 addnode 127.0.0.1:24001 add >/dev/null || true
-  rpc "$root" sn1 addnode 127.0.0.1:24001 add >/dev/null || true
-  rpc "$root" obs addnode 127.0.0.1:24001 add >/dev/null || true
+  rpc "$root" ctl addnode 127.0.0.1:24002 add >/dev/null 2>&1 || true
+  rpc "$root" ctl addnode 127.0.0.1:24003 add >/dev/null 2>&1 || true
+  rpc "$root" ctl addnode 127.0.0.1:24004 add >/dev/null 2>&1 || true
+  rpc "$root" mn1 addnode 127.0.0.1:24001 add >/dev/null 2>&1 || true
+  rpc "$root" sn1 addnode 127.0.0.1:24001 add >/dev/null 2>&1 || true
+  rpc "$root" obs addnode 127.0.0.1:24001 add >/dev/null 2>&1 || true
 
-  rpc "$root" ctl addnode 127.0.0.1:24002 onetry >/dev/null || true
-  rpc "$root" ctl addnode 127.0.0.1:24003 onetry >/dev/null || true
-  rpc "$root" ctl addnode 127.0.0.1:24004 onetry >/dev/null || true
-  rpc "$root" mn1 addnode 127.0.0.1:24001 onetry >/dev/null || true
-  rpc "$root" sn1 addnode 127.0.0.1:24001 onetry >/dev/null || true
-  rpc "$root" obs addnode 127.0.0.1:24001 onetry >/dev/null || true
+  rpc "$root" ctl addnode 127.0.0.1:24002 onetry >/dev/null 2>&1 || true
+  rpc "$root" ctl addnode 127.0.0.1:24003 onetry >/dev/null 2>&1 || true
+  rpc "$root" ctl addnode 127.0.0.1:24004 onetry >/dev/null 2>&1 || true
+  rpc "$root" mn1 addnode 127.0.0.1:24001 onetry >/dev/null 2>&1 || true
+  rpc "$root" sn1 addnode 127.0.0.1:24001 onetry >/dev/null 2>&1 || true
+  rpc "$root" obs addnode 127.0.0.1:24001 onetry >/dev/null 2>&1 || true
 }
 
 wait_height() {

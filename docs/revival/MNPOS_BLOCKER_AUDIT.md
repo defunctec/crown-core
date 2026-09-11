@@ -168,7 +168,6 @@ Root-cause classification for registration divergence:
 
 - **REGTEST-SPECIFIC DEFECT**
 - **STATE-INITIALIZATION DEFECT**
-- **TIMING/ORDER DEPENDENCY**
 - **TEST-ENVIRONMENT LIMITATION**
 
 Evidence:
