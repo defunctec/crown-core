@@ -82,8 +82,10 @@ public:
 
     void DsegUpdate(CNode* pnode);
 
-    /// Check if an IP address is already in use by another systemnode
+    /// Check if an IP address is already in use by any systemnode
     bool IsAddressInUse(const CService& addr);
+    /// Check if an IP address is already in use by a different systemnode
+    bool IsAddressInUse(const CService& addr, const CTxIn& vin);
 
     /// Find an entry
     CSystemnode* Find(const CScript &payee);

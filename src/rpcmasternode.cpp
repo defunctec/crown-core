@@ -240,9 +240,15 @@ Value masternode(const Array& params, bool fHelp)
 
         // Get the IP address of the active masternode
         CService addr = activeMasternode.service;
+        CPubKey pubKeyCollateralAddress;
+        CKey keyCollateralAddress;
+
+        if (!pwalletMain || !pwalletMain->GetMasternodeVinAndKeys(activeMasternode.vin, pubKeyCollateralAddress, keyCollateralAddress)) {
+            throw runtime_error("Missing masternode input, please look at the documentation for instructions on masternode creation\n");
+        }
 
         // Check if the IP address is already in use by another masternode
-        if (mnodeman.IsAddressInUse(addr)) {
+        if (mnodeman.IsAddressInUse(addr, activeMasternode.vin)) {
             throw runtime_error("IP address is already in use by another masternode");
         }
 
@@ -281,7 +287,9 @@ Value masternode(const Array& params, bool fHelp)
                 // Check if the IP address is already in use by another masternode
                 CService addr(mne.getIp());
 
-                if (mnodeman.IsAddressInUse(addr)) {
+                CTxIn vin = CTxIn(uint256S(mne.getTxHash()), uint32_t(atoi(mne.getOutputIndex().c_str())));
+
+                if (mnodeman.IsAddressInUse(addr, vin)) {
                     statusObj.push_back(Pair("result", "failed"));
                     statusObj.push_back(Pair("errorMessage", "IP address is already in use by another masternode."));
                     break;
@@ -343,7 +351,7 @@ if (strCommand == "start-many" || strCommand == "start-all" || strCommand == "st
 
         // Check if the IP address is already in use by another masternode
         CService addr(mne.getIp());
-        if (mnodeman.IsAddressInUse(addr)) {
+        if (mnodeman.IsAddressInUse(addr, vin)) {
             failed++;
             Object statusObj;
             statusObj.push_back(Pair("alias", mne.getAlias()));
@@ -690,7 +698,9 @@ Value masternodebroadcast(const Array& params, bool fHelp)
                 CService addr(mne.getIp());
 
                 // Check if the IP address is already in use by another masternode
-                if (mnodeman.IsAddressInUse(addr)) {
+                CTxIn vin = CTxIn(uint256S(mne.getTxHash()), uint32_t(atoi(mne.getOutputIndex().c_str())));
+
+                if (mnodeman.IsAddressInUse(addr, vin)) {
                     statusObj.push_back(Pair("result", "failed"));
                     statusObj.push_back(Pair("errorMessage", "IP address is already in use by another masternode."));
                     break; // Exit the loop as we found a conflict
@@ -749,7 +759,7 @@ Value masternodebroadcast(const Array& params, bool fHelp)
             CService addr(mne.getIp());
 
             // Check if the IP address is already in use by another masternode
-            if (mnodeman.IsAddressInUse(addr)) {
+            if (mnodeman.IsAddressInUse(addr, vin)) {
                 failed++;
                 Object statusObj;
                 statusObj.push_back(Pair("alias", mne.getAlias()));

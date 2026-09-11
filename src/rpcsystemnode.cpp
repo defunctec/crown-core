@@ -216,7 +216,9 @@ if (strCommand == "start-alias")
             CService addr(mne.getIp());
             // Check if the IP address is already in use by another systemnode
 
-            if (snodeman.IsAddressInUse(addr)) {
+            CTxIn vin = CTxIn(uint256S(mne.getTxHash()), uint32_t(atoi(mne.getOutputIndex().c_str())));
+
+            if (snodeman.IsAddressInUse(addr, vin)) {
                 statusObj.push_back(Pair("result", "failed"));
                 statusObj.push_back(Pair("errorMessage", "IP address is already in use by another systemnode."));
                 return statusObj;
@@ -320,7 +322,7 @@ if (strCommand == "start-alias")
 
             CService addr(mne.getIp());
             // Check if the IP address is already in use by another systemnode
-            if (snodeman.IsAddressInUse(addr)) {
+            if (snodeman.IsAddressInUse(addr, vin)) {
                 failed++;
                 Object statusObj;
                 statusObj.push_back(Pair("alias", mne.getAlias()));
@@ -593,7 +595,9 @@ Value systemnodebroadcast(const Array& params, bool fHelp)
                 CService addr(mne.getIp());
                 // Check if the IP address is already in use by another systemnode
 
-                if (snodeman.IsAddressInUse(addr)) {
+                CTxIn vin = CTxIn(uint256S(mne.getTxHash()), uint32_t(atoi(mne.getOutputIndex().c_str())));
+
+                if (snodeman.IsAddressInUse(addr, vin)) {
                     statusObj.push_back(Pair("result", "failed"));
                     statusObj.push_back(Pair("errorMessage", "IP address is already in use by another systemnode."));
                     break; // Skip to the next entry
@@ -652,7 +656,7 @@ Value systemnodebroadcast(const Array& params, bool fHelp)
             // Check if the IP address is already in use by another systemnode
             CService addr(mne.getIp());
 
-            if (snodeman.IsAddressInUse(addr)) {
+            if (snodeman.IsAddressInUse(addr, vin)) {
                 failed++;
                 Object statusObj;
                 statusObj.push_back(Pair("alias", mne.getAlias()));

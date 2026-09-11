@@ -80,6 +80,7 @@ BITCOIN_TESTS =\
   test/score_tests.cpp \
   test/db_tests.cpp \
   test/prefix_tests.cpp
+  test/pr1_remediation_tests.cpp
 
 if ENABLE_WALLET
 BITCOIN_TESTS += \
