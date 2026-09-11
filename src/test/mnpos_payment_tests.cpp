@@ -1,8 +1,10 @@
 #include "key.h"
 #include "main.h"
 #include "masternode-payments.h"
+#include "masternodeman.h"
 #include "script/standard.h"
 #include "systemnode-payments.h"
+#include "systemnodeman.h"
 
 #include <boost/test/unit_test.hpp>
 
@@ -81,8 +83,8 @@ BOOST_AUTO_TEST_CASE(coinbase_outputs_with_masternode_and_systemnode_payees)
 
     BOOST_CHECK_EQUAL(tx.vout.size(), 3U);
     BOOST_CHECK_EQUAL(tx.vout[0].nValue, blockValue - masternodePayment - systemnodePayment);
-    BOOST_CHECK_EQUAL(tx.vout[MN_PMT_SLOT], CTxOut(masternodePayment, masternodeScript));
-    BOOST_CHECK_EQUAL(tx.vout[SN_PMT_SLOT], CTxOut(systemnodePayment, systemnodeScript));
+    BOOST_CHECK(tx.vout[MN_PMT_SLOT] == CTxOut(masternodePayment, masternodeScript));
+    BOOST_CHECK(tx.vout[SN_PMT_SLOT] == CTxOut(systemnodePayment, systemnodeScript));
     BOOST_CHECK_EQUAL(CTransaction(tx).GetValueOut(), blockValue);
 }
 
@@ -104,7 +106,7 @@ BOOST_AUTO_TEST_CASE(coinbase_outputs_with_masternode_payee_only)
 
     BOOST_CHECK_EQUAL(tx.vout.size(), 2U);
     BOOST_CHECK_EQUAL(tx.vout[0].nValue, blockValue - masternodePayment);
-    BOOST_CHECK_EQUAL(tx.vout[MN_PMT_SLOT], CTxOut(masternodePayment, masternodeScript));
+    BOOST_CHECK(tx.vout[MN_PMT_SLOT] == CTxOut(masternodePayment, masternodeScript));
     BOOST_CHECK_EQUAL(CTransaction(tx).GetValueOut(), blockValue);
 }
 
@@ -114,7 +116,7 @@ BOOST_AUTO_TEST_CASE(coinbase_outputs_with_systemnode_payee_only)
 
     const int nHeight = chainActive.Tip()->nHeight + 1;
     const CAmount nFees = 0;
-    const CAmount blockValue = GetBlockValue(chainActive.TTip()->nHeight, nFees);
+    const CAmount blockValue = GetBlockValue(chainActive.Tip()->nHeight, nFees);
     const CAmount systemnodePayment = GetSystemnodePayment(nHeight, blockValue);
     const CScript systemnodeScript = MakePayeeScript();
 
@@ -126,8 +128,8 @@ BOOST_AUTO_TEST_CASE(coinbase_outputs_with_systemnode_payee_only)
 
     BOOST_CHECK_EQUAL(tx.vout.size(), 3U);
     BOOST_CHECK_EQUAL(tx.vout[0].nValue, blockValue - systemnodePayment);
-    BOOST_CHECK_EQUAL(tx.vout[MN_PMT_SLOT], CTxOut(0, CScript()));
-    BOOST_CHECK_EQUAL(tx.vout[SN_PMT_SLOT], CTxOut(systemnodePayment, systemnodeScript));
+    BOOST_CHECK(tx.vout[MN_PMT_SLOT] == CTxOut(0, CScript()));
+    BOOST_CHECK(tx.vout[SN_PMT_SLOT] == CTxOut(systemnodePayment, systemnodeScript));
     BOOST_CHECK_NO_THROW(CTransaction(tx).GetValueOut());
     BOOST_CHECK_EQUAL(CTransaction(tx).GetValueOut(), blockValue);
 }
