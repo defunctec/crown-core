@@ -14,18 +14,15 @@ done
 sleep 3
 
 match_exact_cmd() {
-  local pid="$1" n="$2" cmd token found
+  local pid="$1" n="$2" cmd needle
   cmd="$(ps -p "$pid" -o args= 2>/dev/null || true)"
   [ -n "$cmd" ] || return 1
   [[ "$cmd" == *"crownd"* ]] || return 1
-  found=0
-  for token in $cmd; do
-    if [ "$token" = "-datadir=$ROOT/$n" ]; then
-      found=1
-      break
-    fi
-  done
-  [ "$found" -eq 1 ]
+  needle="-datadir=$ROOT/$n"
+  case "$cmd" in
+    *"$needle"*) return 0 ;;
+    *) return 1 ;;
+  esac
 }
 
 collect_tracked_pids() {

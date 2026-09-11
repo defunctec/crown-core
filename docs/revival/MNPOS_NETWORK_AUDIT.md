@@ -272,6 +272,62 @@ See detailed risk register below.
 | R6 | Payment-state sensitivity | payment behavior depends on sync/spork state and can run permissively while unsynced | MEDIUM | payment validation guards in source | harder to reason about strict policy in fresh private nets | targeted tests across sync states with controlled winner data | ARCHITECTURAL RISK |
 | R7 | Block template/payment assembly | runtime `GetValueOut` range error seen in block creation path under node-payment transitions | HIGH | runtime RPC error + payout-slot assembly paths in `masternode-payments.cpp`/`systemnode-payments.cpp` | can stall fresh-chain block generation in some node-state combinations | isolate minimal deterministic reproducer and validate coinbase output initialization paths | IMPLEMENTATION DEFECT |
 
+## Why the MNPoS Private Network Baseline Is Incomplete
+
+| Blocker | Observed behaviour | Evidence | Classification | Production-source change likely required | Recommended next investigation |
+|---|---|---|---|---|---|
+| PoS transition not reached in executed private run | Chain remained PoW-only; no MNPoS blocks were produced | Runtime height reached 1724; PoS gate is `PoSStartHeight` and regtest inherits 141000 from testnet (`src/main.cpp:2374-2385`, `src/chainparams.cpp:346-367`, `src/chainparams.cpp:574-609`) | LEGACY DESIGN LIMITATION | NO (first validate non-production test setup strategy) | Targeted bootstrap investigation of fresh-private-chain path to first valid MNPoS producer |
+| Masternode collateral not formed | 10,000 CRW MN collateral was not achieved in fresh run | Runtime wallet remained 3097.9375 CRW at height 1724; MN collateral requirement is 10000 (`src/wallet.h:54`); regtest halving interval is 150 (`src/chainparams.cpp:583`) | ARCHITECTURAL RISK | NO (investigate test-funding/bootstrap method first) | Quantify minimal run conditions/funding path that can actually produce a valid 10k collateral output in isolated test setup |
+| Registration/visibility instability | Systemnode could show local `ENABLED` while peers showed empty systemnode lists in some runs | Runtime `systemnode count`/`systemnode list status` divergence across ctl/mn1/sn1/obs after restart/broadcast sequences | IMPLEMENTATION DEFECT | UNKNOWN | Deterministic registration propagation investigation with controlled startup/sync order and preserved logs |
+| Node-payment transition error | Block/template path hit `CTransaction::GetValueOut() : value out of range` in one runtime path | Runtime RPC/log error; source shows conditional payout-slot construction in `masternode-payments.cpp` and `systemnode-payments.cpp` | IMPLEMENTATION DEFECT | UNKNOWN | Build minimal reproducer focused on payment-slot assembly and validation path |
+
+## Proven scope summary
+
+### PROVEN AT RUNTIME
+
+- Collateral creation: **YES** (500 CRW systemnode collateral created)
+- Collateral maturity: **YES** (required 15 confirmations exceeded)
+- Systemnode registration: **PARTIAL** (local activation proven; cross-peer stability not consistently proven)
+- Effect of regtest `tCRW` address issue: **YES** (validateaddress/sendtoaddress rejection reproduced)
+
+### CONFIRMED FROM SOURCE ONLY
+
+- Stake-pointer operation rules (construction/validation/depth/reuse/signover)
+- Block signature validation path for MNPoS blocks
+- Reward/payment rule structure and payment-slot requirements
+- PoS activation gating and bootstrap rule chain
+
+### NOT YET PROVEN
+
+- Fresh-chain MNPoS bootstrap to first accepted PoS block
+- Masternode registration (active, eligible runtime state)
+- Actual MNPoS block production
+- Producer selection
+- Producer rotation
+- Block signature validation on produced MNPoS blocks
+- Reward/payment behaviour on produced MNPoS blocks
+- Producer failure/recovery
+- Spork independence
+- Governance-state independence
+
+### Explicit answers (status class)
+
+- Fresh-chain MNPoS bootstrap: **NOT YET PROVEN**
+- Masternode registration: **NOT YET PROVEN**
+- Systemnode registration: **PROVEN AT RUNTIME (PARTIAL)**
+- Collateral creation: **PROVEN AT RUNTIME**
+- Collateral maturity: **PROVEN AT RUNTIME**
+- Stake-pointer operation: **CONFIRMED FROM SOURCE ONLY**
+- Actual MNPoS block production: **NOT YET PROVEN**
+- Producer selection: **NOT YET PROVEN**
+- Producer rotation: **NOT YET PROVEN**
+- Block signature validation: **CONFIRMED FROM SOURCE ONLY**
+- Reward/payment behaviour: **CONFIRMED FROM SOURCE ONLY**
+- Producer failure/recovery: **NOT YET PROVEN**
+- Spork independence: **NOT YET PROVEN**
+- Governance-state independence: **NOT YET PROVEN**
+- Effect of the regtest `tCRW` address issue: **PROVEN AT RUNTIME**
+
 ## Safe reusable MNPoS test tooling
 
 Added and executed:
@@ -294,6 +350,21 @@ Execution evidence: scripts were run during this phase and produced expected nod
 ### Final verdict
 
 **MNPOS PRIVATE NETWORK BASELINE INCOMPLETE**
+
+### Recommended Next Technical Investigation
+
+**Selected next step: E. targeted investigation of the payment/registration blocker path (before Phase 2).**
+
+Dependency-ordered blocker sequence:
+
+1. **E — deterministic reproduction of registration divergence and `GetValueOut()` node-payment transition failure**  
+   Why first: this is the smallest direct blocker observed during the executed private run and affects confidence in node-list/payment behavior even before full MNPoS production.
+2. **A — targeted MNPoS bootstrap investigation on a fresh isolated private setup**  
+   Why second: once registration/payment behavior is deterministic, validate the shortest path to first accepted MNPoS block under existing rules.
+3. **B — targeted Masternode/Systemnode registration investigation for full multi-producer readiness**  
+   Why third: complete eligible producer set only after bootstrap and propagation behavior are stable.
+
+**Phase 2 historical-chain/economic audit is not recommended next.**
 
 ### Required explicit answers
 
