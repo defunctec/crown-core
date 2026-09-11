@@ -187,3 +187,7 @@ Results:
 ## 10. Consolidation verdict
 
 The authorized PR branch already contained the full effective recovery baseline from `fd810b6a00217f6d5e856963a6cc760e664e5fac`. Relative to that canonical recovery commit, the branch only added recovery export artifacts before this report. No missing recovery fix was found, no later divergent production fix was required, and no unexpected consensus, monetary, serialization, wallet-format, or production-cryptography drift was detected.
+
+## 11. Post-consolidation CI portability correction
+
+GitHub Actions later exposed a test-only portability regression in `src/test/rpcprotocol_tests.cpp`: the newly added regression test used `boost::asio::io_context`, but Crown's depends system pins Boost `1.64.0`, which predates that API and still uses `boost::asio::io_service` (`depends/packages/boost.mk:2-5`). Production Crown code was not affected by this failure. The test was corrected to use `boost::asio::io_service`, which remains compatible with both the historical depends Boost version and the modern Ubuntu recovery build environment, while preserving the intended RPC SSL stream/context regression coverage. No consensus, cryptography, wallet, or production networking behavior changed.

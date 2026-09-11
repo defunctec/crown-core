@@ -13,15 +13,15 @@ BOOST_AUTO_TEST_SUITE(rpcprotocol_tests)
 
 BOOST_AUTO_TEST_CASE(ssliostreamdevice_connect_uses_stream_context)
 {
-    boost::asio::io_context ioContext;
+    boost::asio::io_service ioService;
     boost::asio::ssl::context sslContext(boost::asio::ssl::context::sslv23);
-    boost::asio::ssl::stream<boost::asio::ip::tcp::socket> sslStream(ioContext, sslContext);
+    boost::asio::ssl::stream<boost::asio::ip::tcp::socket> sslStream(ioService, sslContext);
     SSLIOStreamDevice<boost::asio::ip::tcp> device(sslStream, false);
 
     boost::asio::ip::tcp::acceptor acceptor(
-        ioContext,
+        ioService,
         boost::asio::ip::tcp::endpoint(boost::asio::ip::address_v4::loopback(), 0));
-    boost::asio::ip::tcp::socket peer(ioContext);
+    boost::asio::ip::tcp::socket peer(ioService);
 
     boost::system::error_code acceptError;
     acceptor.async_accept(peer, [&acceptError](const boost::system::error_code& ec) {
@@ -29,7 +29,7 @@ BOOST_AUTO_TEST_CASE(ssliostreamdevice_connect_uses_stream_context)
     });
 
     BOOST_CHECK(device.connect("127.0.0.1", boost::lexical_cast<std::string>(acceptor.local_endpoint().port())));
-    ioContext.poll();
+    ioService.poll();
     BOOST_CHECK(!acceptError);
 
     sslStream.lowest_layer().close();
