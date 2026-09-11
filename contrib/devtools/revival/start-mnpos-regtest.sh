@@ -8,9 +8,6 @@ RPC_PASS="${RPC_PASS:-phase1d}"
 NODES=(ctl mn1 sn1 obs)
 
 mkdir -p "$ROOT"
-sudo ip addr add 11.11.11.1/32 dev lo 2>/dev/null || true
-sudo ip addr add 11.11.11.2/32 dev lo 2>/dev/null || true
-sudo ip route add 11.11.11.0/24 dev lo 2>/dev/null || true
 
 write_conf() {
   local n="$1" rpcport port bind
@@ -48,10 +45,18 @@ CFG
 for n in "${NODES[@]}"; do
   write_conf "$n"
   "$BIN_DIR/crownd" -datadir="$ROOT/$n" >/dev/null
+  ready=0
   for _ in $(seq 1 60); do
-    "$BIN_DIR/crown-cli" -datadir="$ROOT/$n" -rpcuser="$RPC_USER" -rpcpassword="$RPC_PASS" getblockcount >/dev/null 2>&1 && break
+    if "$BIN_DIR/crown-cli" -datadir="$ROOT/$n" -rpcuser="$RPC_USER" -rpcpassword="$RPC_PASS" getblockcount >/dev/null 2>&1; then
+      ready=1
+      break
+    fi
     sleep 1
   done
+  if [ "$ready" -ne 1 ]; then
+    echo "Failed to start node '$n' (RPC not ready)" >&2
+    exit 1
+  fi
 done
 
 "$BIN_DIR/crown-cli" -datadir="$ROOT/ctl" -rpcuser="$RPC_USER" -rpcpassword="$RPC_PASS" addnode 127.0.0.1:24002 add >/dev/null || true

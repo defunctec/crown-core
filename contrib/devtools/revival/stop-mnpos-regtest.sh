@@ -11,12 +11,12 @@ for n in "${NODES[@]}"; do
 done
 sleep 3
 
-mapfile -t pids < <(ps -eo pid,args | grep '/src/crownd -datadir=' | grep "$ROOT" | grep -v grep | awk '{print $1}')
+mapfile -t pids < <(ps -eo pid,args | awk -v root="$ROOT/" '$0 ~ /crownd -datadir=/ && index($0, root) {print $1}')
 if [ "${#pids[@]}" -gt 0 ]; then
   kill "${pids[@]}" >/dev/null 2>&1 || true
   sleep 2
 fi
-mapfile -t pids2 < <(ps -eo pid,args | grep '/src/crownd -datadir=' | grep "$ROOT" | grep -v grep | awk '{print $1}')
+mapfile -t pids2 < <(ps -eo pid,args | awk -v root="$ROOT/" '$0 ~ /crownd -datadir=/ && index($0, root) {print $1}')
 if [ "${#pids2[@]}" -gt 0 ]; then
   kill -9 "${pids2[@]}" >/dev/null 2>&1 || true
 fi
