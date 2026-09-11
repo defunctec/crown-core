@@ -42,7 +42,6 @@ upnp=0
 onlynet=ipv4
 logtimestamps=1
 printtoconsole=0
-fallbackfee=0.001
 txindex=1
 CFG
   chmod 600 "$ROOT/$n/crown.conf"

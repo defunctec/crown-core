@@ -54,6 +54,7 @@ fi
 
 for n in "${NODES[@]}"; do
   rm -f "$ROOT/$n/crownd.pid"
+  rm -f "$ROOT/$n/regtest/crownd.pid"
 done
 
 echo "Stopped nodes in $ROOT"
