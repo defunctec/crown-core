@@ -1,0 +1,15 @@
+Recovery patch export
+Repository: defunctec/crown-core
+Branch: copilot/research-crown-cryptocurrency
+Base: 6a60c10a0e8f53ede56c3598bbe3370c61dc11ec
+Head: fd810b6a00217f6d5e856963a6cc760e664e5fac
+
+Artifacts:
+- Unified patch: /home/runner/work/crown-core/crown-core/docs/revival/patches/recovery-build-compatibility/recovery-build-compatibility.patch
+- Format-patch dir: /home/runner/work/crown-core/crown-core/docs/revival/patches/recovery-build-compatibility/format-patch
+- Git bundle: /home/runner/work/crown-core/crown-core/docs/revival/patches/recovery-build-compatibility/recovery-build-compatibility.bundle
+
+Commits:
+c0f17d60a chore: checkpoint secp256k1 openssl test patch
+e930e97d3 docs: add secp256k1 openssl compatibility audit
+fd810b6a0 chore: reconstruct recovery baseline changes

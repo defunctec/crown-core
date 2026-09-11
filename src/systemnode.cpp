@@ -517,19 +517,19 @@ bool CSystemnodeBroadcast::CheckAndUpdate(int& nDos) const
     } else if (addr.GetPort() == 9340) return false;
 
     // Check if the IP address is already in use by another enabled systemnode
-    CSystemnode* psn = snodeman.Find(addr);
+    CSystemnode* psnByAddr = snodeman.Find(addr);
 
     // Check if the IPv4 address is found and the vin obtained from the corresponding IPv4 address
     // does not match the vin of the systemnode attempting to broadcast
-    if (psn && psn->vin != vin) {
+    if (psnByAddr && psnByAddr->vin != vin) {
         // Check if the found systemnode is enabled and online
-        if (psn->IsEnabled()) {
+        if (psnByAddr->IsEnabled()) {
             // Check if the signing time of the new broadcast is later than the signing time of the initial broadcast
             // to enable the found systemnode. If the new broadcast is more recent, it could be malicious and should be banned.
-            if (sigTime > psn->sigTime) {
+            if (sigTime > psnByAddr->sigTime) {
                 LogPrintf("CSystemnodeBroadcast::CheckAndUpdate -- IP address already in use by another enabled systemnode %s\n", addr.ToString());
                 // Increment DoS score for duplicate IP
-                nDoS = 33;
+                nDos = 33;
                 // Stop the node from broadcasting and ultimately enforce unique IPv4
                 return false;
             }

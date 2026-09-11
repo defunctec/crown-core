@@ -6,6 +6,7 @@
 
 #include "key.h"
 #include "main.h"
+#include "platform/platform-db.h"
 #include "random.h"
 #include "txdb.h"
 #include "ui_interface.h"
@@ -48,6 +49,9 @@ struct TestingSetup {
         pblocktree = new CBlockTreeDB(1 << 20, true);
         pcoinsdbview = new CCoinsViewDB(1 << 23, true);
         pcoinsTip = new CCoinsViewCache(pcoinsdbview);
+        // InitBlockIndex now activates genesis through PlatformDb as well, so
+        // the test harness must create the singleton first.
+        Platform::PlatformDb::CreateInstance(1 << 20, Platform::PlatformOpt::OptSpeed, true, true);
         InitBlockIndex();
 #ifdef ENABLE_WALLET
         bool fFirstRun;
@@ -73,6 +77,7 @@ struct TestingSetup {
         delete pcoinsTip;
         delete pcoinsdbview;
         delete pblocktree;
+        Platform::PlatformDb::DestroyInstance();
 #ifdef ENABLE_WALLET
         bitdb.Flush(true);
 #endif

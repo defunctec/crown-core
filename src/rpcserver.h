@@ -34,6 +34,7 @@ public:
 
 /** Start RPC threads */
 void StartRPCThreads();
+bool SetRPCSSLCipherList(boost::asio::ssl::context& context, const std::string& strCiphers);
 /**
  * Alternative to StartRPCThreads for the GUI, when no server is
  * used. The RPC thread in this case is only used to handle timeouts.
