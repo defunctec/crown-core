@@ -240,13 +240,6 @@ Value masternode(const Array& params, bool fHelp)
 
         // Get the IP address of the active masternode
         CService addr = activeMasternode.service;
-        CPubKey pubKeyCollateralAddress;
-        CKey keyCollateralAddress;
-
-        if (!pwalletMain || !pwalletMain->GetMasternodeVinAndKeys(activeMasternode.vin, pubKeyCollateralAddress, keyCollateralAddress)) {
-            throw runtime_error("Missing masternode input, please look at the documentation for instructions on masternode creation\n");
-        }
-
         // Check if the IP address is already in use by another masternode
         if (mnodeman.IsAddressInUse(addr, activeMasternode.vin)) {
             throw runtime_error("IP address is already in use by another masternode");
