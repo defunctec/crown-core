@@ -112,6 +112,7 @@ jobs:
 
       - name: Compute cache identities
         id: cache-ids
+        shell: bash
         run: |
           set -euo pipefail
 
