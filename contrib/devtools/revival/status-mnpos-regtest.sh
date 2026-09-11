@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
-ROOT="${1:-/tmp/crown-phase1d}"
+if [ "${1:-}" = "" ]; then
+  echo "Usage: $0 <private_datadir_root>" >&2
+  exit 1
+fi
+ROOT="$1"
 BIN_DIR="${BIN_DIR:-$(cd "$(dirname "$0")/../../.." && pwd)/src}"
 RPC_USER="${RPC_USER:-rt}"
 RPC_PASS="${RPC_PASS:-phase1d}"

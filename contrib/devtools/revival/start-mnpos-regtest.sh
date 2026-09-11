@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="${1:-/tmp/crown-phase1d}"
+if [ "${1:-}" = "" ]; then
+  echo "Usage: $0 <private_datadir_root>" >&2
+  exit 1
+fi
+ROOT="$1"
 BIN_DIR="${BIN_DIR:-$(cd "$(dirname "$0")/../../.." && pwd)/src}"
 RPC_USER="${RPC_USER:-rt}"
 RPC_PASS="${RPC_PASS:-phase1d}"
@@ -9,23 +13,6 @@ NODES=(ctl mn1 sn1 obs)
 
 mkdir -p "$ROOT"
 umask 077
-
-find_pids_for_datadir() {
-  local datadir="$1"
-  local found
-  while read -r pid args; do
-    found=0
-    for token in $args; do
-      if [ "$token" = "-datadir=$datadir" ]; then
-        found=1
-        break
-      fi
-    done
-    if [ "$found" -eq 1 ] && [[ "$args" == *"crownd"* ]]; then
-      echo "$pid"
-    fi
-  done < <(ps -eo pid=,args=)
-}
 
 write_conf() {
   local n="$1" rpcport port bind
@@ -65,19 +52,26 @@ for n in "${NODES[@]}"; do
   write_conf "$n"
   "$BIN_DIR/crownd" -datadir="$ROOT/$n" >/dev/null
   datadir="$ROOT/$n"
+  pidfile="$datadir/regtest/crownd.pid"
   rpc_unreachable=1
   ready=0
+  pid=""
   for _ in $(seq 1 60); do
+    if [ -z "$pid" ] && [ -f "$pidfile" ]; then
+      pid="$(cat "$pidfile" 2>/dev/null || true)"
+      if ! [[ "$pid" =~ ^[0-9]+$ ]]; then
+        pid=""
+      fi
+    fi
     if "$BIN_DIR/crown-cli" -datadir="$ROOT/$n" -rpcuser="$RPC_USER" -rpcpassword="$RPC_PASS" getblockcount >/dev/null 2>&1; then
       ready=1
       rpc_unreachable=0
-      pid="$(find_pids_for_datadir "$datadir" | head -n1 || true)"
       if [ -n "$pid" ]; then
         echo "$pid" > "$ROOT/$n/crownd.pid"
       fi
       break
     fi
-    if ! find_pids_for_datadir "$datadir" >/dev/null 2>&1; then
+    if [ -n "$pid" ] && ! ps -p "$pid" -o comm= 2>/dev/null | grep -q '^crownd$'; then
       echo "Node '$n' exited before RPC became ready (datadir=$datadir)" >&2
       exit 1
     fi
