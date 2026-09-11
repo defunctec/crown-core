@@ -12,8 +12,16 @@ umask 077
 
 find_pids_for_datadir() {
   local datadir="$1"
+  local found
   while read -r pid args; do
-    if [[ "$args" == *"crownd"* ]] && [[ "$args" =~ (^|[[:space:]])-datadir=$datadir($|[[:space:]]) ]]; then
+    found=0
+    for token in $args; do
+      if [ "$token" = "-datadir=$datadir" ]; then
+        found=1
+        break
+      fi
+    done
+    if [ "$found" -eq 1 ] && [[ "$args" == *"crownd"* ]]; then
       echo "$pid"
     fi
   done < <(ps -eo pid=,args=)
