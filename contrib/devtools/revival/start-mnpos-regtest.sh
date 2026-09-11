@@ -10,6 +10,15 @@ NODES=(ctl mn1 sn1 obs)
 mkdir -p "$ROOT"
 umask 077
 
+find_pids_for_datadir() {
+  local datadir="$1"
+  while read -r pid args; do
+    if [[ "$args" == *"crownd"* ]] && [[ "$args" =~ (^|[[:space:]])-datadir=$datadir($|[[:space:]]) ]]; then
+      echo "$pid"
+    fi
+  done < <(ps -eo pid=,args=)
+}
+
 write_conf() {
   local n="$1" rpcport port bind
   case "$n" in
@@ -48,20 +57,19 @@ for n in "${NODES[@]}"; do
   write_conf "$n"
   "$BIN_DIR/crownd" -datadir="$ROOT/$n" >/dev/null
   datadir="$ROOT/$n"
-  expected_cmd="$BIN_DIR/crownd -datadir=$datadir"
   rpc_unreachable=1
   ready=0
   for _ in $(seq 1 60); do
     if "$BIN_DIR/crown-cli" -datadir="$ROOT/$n" -rpcuser="$RPC_USER" -rpcpassword="$RPC_PASS" getblockcount >/dev/null 2>&1; then
       ready=1
       rpc_unreachable=0
-      pid="$(pgrep -f -x "$expected_cmd" | head -n1 || true)"
+      pid="$(find_pids_for_datadir "$datadir" | head -n1 || true)"
       if [ -n "$pid" ]; then
         echo "$pid" > "$ROOT/$n/crownd.pid"
       fi
       break
     fi
-    if ! pgrep -f -x "$expected_cmd" >/dev/null 2>&1; then
+    if ! find_pids_for_datadir "$datadir" >/dev/null 2>&1; then
       echo "Node '$n' exited before RPC became ready (datadir=$datadir)" >&2
       exit 1
     fi

@@ -15,7 +15,7 @@ match_exact_cmd() {
   local pid="$1" n="$2" cmd
   cmd="$(ps -p "$pid" -o args= 2>/dev/null || true)"
   [ -n "$cmd" ] || return 1
-  [ "$cmd" = "$BIN_DIR/crownd -datadir=$ROOT/$n" ]
+  [[ "$cmd" == *"crownd"* ]] && [[ "$cmd" =~ (^|[[:space:]])-datadir=$ROOT/$n($|[[:space:]]) ]]
 }
 
 collect_tracked_pids() {
