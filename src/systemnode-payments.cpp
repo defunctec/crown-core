@@ -229,6 +229,8 @@ void CSystemnodePayments::FillBlockPayee(CMutableTransaction& txNew, int64_t nFe
 
     if(hasPayment) {
         txNew.vout.resize(3);
+        if (txNew.vout[MN_PMT_SLOT].IsNull())
+            txNew.vout[MN_PMT_SLOT] = CTxOut(0, CScript());
 
         // [0] is for miner, [1] masternode, [2] systemnode
         txNew.vout[2].scriptPubKey = payee;
