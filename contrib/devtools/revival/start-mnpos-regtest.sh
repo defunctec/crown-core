@@ -63,7 +63,7 @@ for n in "${NODES[@]}"; do
         pid=""
       fi
     fi
-    if "$BIN_DIR/crown-cli" -datadir="$ROOT/$n" -rpcuser="$RPC_USER" -rpcpassword="$RPC_PASS" getblockcount >/dev/null 2>&1; then
+    if "$BIN_DIR/crown-cli" -datadir="$ROOT/$n" getblockcount >/dev/null 2>&1; then
       ready=1
       rpc_unreachable=0
       if [ -n "$pid" ]; then
@@ -85,18 +85,18 @@ for n in "${NODES[@]}"; do
   fi
 done
 
-"$BIN_DIR/crown-cli" -datadir="$ROOT/ctl" -rpcuser="$RPC_USER" -rpcpassword="$RPC_PASS" addnode 127.0.0.1:24002 add >/dev/null || true
-"$BIN_DIR/crown-cli" -datadir="$ROOT/ctl" -rpcuser="$RPC_USER" -rpcpassword="$RPC_PASS" addnode 127.0.0.1:24003 add >/dev/null || true
-"$BIN_DIR/crown-cli" -datadir="$ROOT/ctl" -rpcuser="$RPC_USER" -rpcpassword="$RPC_PASS" addnode 127.0.0.1:24004 add >/dev/null || true
-"$BIN_DIR/crown-cli" -datadir="$ROOT/mn1" -rpcuser="$RPC_USER" -rpcpassword="$RPC_PASS" addnode 127.0.0.1:24001 add >/dev/null || true
-"$BIN_DIR/crown-cli" -datadir="$ROOT/sn1" -rpcuser="$RPC_USER" -rpcpassword="$RPC_PASS" addnode 127.0.0.1:24001 add >/dev/null || true
-"$BIN_DIR/crown-cli" -datadir="$ROOT/obs" -rpcuser="$RPC_USER" -rpcpassword="$RPC_PASS" addnode 127.0.0.1:24001 add >/dev/null || true
+"$BIN_DIR/crown-cli" -datadir="$ROOT/ctl" addnode 127.0.0.1:24002 add >/dev/null || true
+"$BIN_DIR/crown-cli" -datadir="$ROOT/ctl" addnode 127.0.0.1:24003 add >/dev/null || true
+"$BIN_DIR/crown-cli" -datadir="$ROOT/ctl" addnode 127.0.0.1:24004 add >/dev/null || true
+"$BIN_DIR/crown-cli" -datadir="$ROOT/mn1" addnode 127.0.0.1:24001 add >/dev/null || true
+"$BIN_DIR/crown-cli" -datadir="$ROOT/sn1" addnode 127.0.0.1:24001 add >/dev/null || true
+"$BIN_DIR/crown-cli" -datadir="$ROOT/obs" addnode 127.0.0.1:24001 add >/dev/null || true
 
-"$BIN_DIR/crown-cli" -datadir="$ROOT/ctl" -rpcuser="$RPC_USER" -rpcpassword="$RPC_PASS" addnode 127.0.0.1:24002 onetry >/dev/null || true
-"$BIN_DIR/crown-cli" -datadir="$ROOT/ctl" -rpcuser="$RPC_USER" -rpcpassword="$RPC_PASS" addnode 127.0.0.1:24003 onetry >/dev/null || true
-"$BIN_DIR/crown-cli" -datadir="$ROOT/ctl" -rpcuser="$RPC_USER" -rpcpassword="$RPC_PASS" addnode 127.0.0.1:24004 onetry >/dev/null || true
-"$BIN_DIR/crown-cli" -datadir="$ROOT/mn1" -rpcuser="$RPC_USER" -rpcpassword="$RPC_PASS" addnode 127.0.0.1:24001 onetry >/dev/null || true
-"$BIN_DIR/crown-cli" -datadir="$ROOT/sn1" -rpcuser="$RPC_USER" -rpcpassword="$RPC_PASS" addnode 127.0.0.1:24001 onetry >/dev/null || true
-"$BIN_DIR/crown-cli" -datadir="$ROOT/obs" -rpcuser="$RPC_USER" -rpcpassword="$RPC_PASS" addnode 127.0.0.1:24001 onetry >/dev/null || true
+"$BIN_DIR/crown-cli" -datadir="$ROOT/ctl" addnode 127.0.0.1:24002 onetry >/dev/null || true
+"$BIN_DIR/crown-cli" -datadir="$ROOT/ctl" addnode 127.0.0.1:24003 onetry >/dev/null || true
+"$BIN_DIR/crown-cli" -datadir="$ROOT/ctl" addnode 127.0.0.1:24004 onetry >/dev/null || true
+"$BIN_DIR/crown-cli" -datadir="$ROOT/mn1" addnode 127.0.0.1:24001 onetry >/dev/null || true
+"$BIN_DIR/crown-cli" -datadir="$ROOT/sn1" addnode 127.0.0.1:24001 onetry >/dev/null || true
+"$BIN_DIR/crown-cli" -datadir="$ROOT/obs" addnode 127.0.0.1:24001 onetry >/dev/null || true
 
 echo "Started nodes in $ROOT"

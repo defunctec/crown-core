@@ -6,12 +6,10 @@ if [ "${1:-}" = "" ]; then
 fi
 ROOT="$1"
 BIN_DIR="${BIN_DIR:-$(cd "$(dirname "$0")/../../.." && pwd)/src}"
-RPC_USER="${RPC_USER:-rt}"
-RPC_PASS="${RPC_PASS:-phase1d}"
 NODES=(ctl mn1 sn1 obs)
 
 for n in "${NODES[@]}"; do
-  "$BIN_DIR/crown-cli" -datadir="$ROOT/$n" -rpcuser="$RPC_USER" -rpcpassword="$RPC_PASS" stop >/dev/null 2>&1 || true
+  "$BIN_DIR/crown-cli" -datadir="$ROOT/$n" stop >/dev/null 2>&1 || true
 done
 sleep 3
 
@@ -33,12 +31,14 @@ match_exact_cmd() {
 collect_tracked_pids() {
   local n pid
   for n in "${NODES[@]}"; do
-    if [ -f "$ROOT/$n/crownd.pid" ]; then
-      pid="$(cat "$ROOT/$n/crownd.pid" 2>/dev/null || true)"
-      if [[ "$pid" =~ ^[0-9]+$ ]] && match_exact_cmd "$pid" "$n"; then
-        echo "$pid"
+    for pidfile in "$ROOT/$n/crownd.pid" "$ROOT/$n/regtest/crownd.pid"; do
+      if [ -f "$pidfile" ]; then
+        pid="$(cat "$pidfile" 2>/dev/null || true)"
+        if [[ "$pid" =~ ^[0-9]+$ ]] && match_exact_cmd "$pid" "$n"; then
+          echo "$pid"
+        fi
       fi
-    fi
+    done
   done
 }
 
