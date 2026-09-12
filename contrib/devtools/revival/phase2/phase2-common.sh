@@ -185,8 +185,8 @@ if indices:
 pruned_status='UNKNOWN'
 rationale=[]
 if not blk:
-    pruned_status='YES'
-    rationale.append('No blk*.dat files found; historical block files are absent from this working copy.')
+    pruned_status='UNKNOWN'
+    rationale.append('No blk*.dat files found; block history is missing or unreadable in this working copy.')
 elif indices[0] > 0:
     pruned_status='YES'
     rationale.append('First blk file index is greater than zero, indicating earlier files are absent.')
@@ -206,6 +206,7 @@ print(json.dumps({
     "contiguous_from_zero": contiguous,
     "index_gaps": gaps,
     "history_appears_pruned": pruned_status,
+    "missing_block_data": len(blk) == 0,
     "pruned_rationale": rationale,
 }, indent=2))
 PY
@@ -225,6 +226,9 @@ if not os.path.exists(blk0):
     blk0=files[0]
 with open(blk0,'rb') as f:
     data=f.read(4)
-print(data.hex())
+if len(data) != 4:
+    print('')
+else:
+    print(data.hex())
 PY
 }

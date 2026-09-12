@@ -237,12 +237,32 @@ max_peer_height=max(peer_startingheights) if peer_startingheights else None
 max_peer_synced_headers=max(peer_synced_headers) if peer_synced_headers else None
 max_peer_synced_blocks=max(peer_synced_blocks) if peer_synced_blocks else None
 
+first_poll = polls[0] if polls else {}
+initial_peer_synced_headers = []
+initial_peer_synced_blocks = []
+for p in first_poll.get('peer_heights', []):
+    if isinstance(p.get('synced_headers'), int):
+        initial_peer_synced_headers.append(p['synced_headers'])
+    if isinstance(p.get('synced_blocks'), int):
+        initial_peer_synced_blocks.append(p['synced_blocks'])
+initial_max_peer_synced_headers = max(initial_peer_synced_headers) if initial_peer_synced_headers else None
+initial_max_peer_synced_blocks = max(initial_peer_synced_blocks) if initial_peer_synced_blocks else None
+
+start_headers = start_bci.get('headers') if isinstance(start_bci.get('headers'), int) else None
 final_headers = final_bci.get('headers') if isinstance(final_bci.get('headers'), int) else None
 newer_blocks_exist = (
     final_height > start_height
-    or (final_headers is not None and final_headers > start_height)
-    or (max_peer_synced_headers is not None and max_peer_synced_headers > start_height)
-    or (max_peer_synced_blocks is not None and max_peer_synced_blocks > start_height)
+    or (start_headers is not None and final_headers is not None and final_headers > start_headers)
+    or (
+        initial_max_peer_synced_headers is not None
+        and max_peer_synced_headers is not None
+        and max_peer_synced_headers > initial_max_peer_synced_headers
+    )
+    or (
+        initial_max_peer_synced_blocks is not None
+        and max_peer_synced_blocks is not None
+        and max_peer_synced_blocks > initial_max_peer_synced_blocks
+    )
 )
 headers_blocks_equal = final_bci.get('headers') == final_bci.get('blocks')
 active_tip_entries=[x for x in chaintips if x.get('status')=='active'] if isinstance(chaintips,list) else []
@@ -274,6 +294,8 @@ sync_result={
         'peer_count_observed_max': max((snap.get('connection_count',0) for snap in polls), default=0),
         'unique_peers_observed': len(peer_addrs),
         'max_peer_startingheight_observed': max_peer_height,
+        'initial_max_peer_synced_headers': initial_max_peer_synced_headers,
+        'initial_max_peer_synced_blocks': initial_max_peer_synced_blocks,
         'max_peer_synced_headers_observed': max_peer_synced_headers,
         'max_peer_synced_blocks_observed': max_peer_synced_blocks,
         'newer_blocks_exist': newer_blocks_exist,
