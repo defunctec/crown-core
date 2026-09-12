@@ -15,6 +15,7 @@
 
 #include <assert.h>
 #include <limits>
+#include <stdexcept>
 
 using namespace boost::assign;
 
@@ -573,14 +574,14 @@ static CDevNetParams *devNetParams;
  */
 class CRegTestParams : public CTestNetParams {
 public:
-    CRegTestParams() {
+    CRegTestParams() : nDefaultSubsidyHalvingInterval(150) {
         networkID = CBaseChainParams::REGTEST;
         strNetworkID = "regtest";
         pchMessageStart[0] = 0xfb;
         pchMessageStart[1] = 0xae;
         pchMessageStart[2] = 0xc6;
         pchMessageStart[3] = 0xdf;
-        nSubsidyHalvingInterval = 150;
+        nSubsidyHalvingInterval = nDefaultSubsidyHalvingInterval;
         nEnforceBlockUpgradeMajority = 750;
         nRejectBlockOutdatedMajority = 950;
         nToCheckBlockUpgradeMajority = 1000;
@@ -607,6 +608,22 @@ public:
         fMineBlocksOnDemand = true;
         fTestnetToBeDeprecatedFieldRPC = false;
     }
+
+    void UpdateSubsidyHalvingIntervalFromArgs()
+    {
+        nSubsidyHalvingInterval = nDefaultSubsidyHalvingInterval;
+        if (!IsArgSet("-regtestsubsidyhalvinginterval")) {
+            return;
+        }
+
+        int64_t overrideInterval = GetArg("-regtestsubsidyhalvinginterval", nDefaultSubsidyHalvingInterval);
+        if (overrideInterval < 1 || overrideInterval > std::numeric_limits<int>::max()) {
+            throw std::runtime_error("-regtestsubsidyhalvinginterval must be between 1 and 2147483647");
+        }
+
+        nSubsidyHalvingInterval = static_cast<int>(overrideInterval);
+    }
+
     const Checkpoints::CCheckpointData& Checkpoints() const 
     {
         return dataRegtest;
@@ -621,6 +638,9 @@ public:
     {
         return false;
     }
+
+private:
+    const int nDefaultSubsidyHalvingInterval;
 };
 static CRegTestParams regTestParams;
 
@@ -708,6 +728,9 @@ CChainParams &Params(CBaseChainParams::Network network) {
 void SelectParams(CBaseChainParams::Network network) {
     if (network == CBaseChainParams::DEVNET) {
         devNetParams = new CDevNetParams();
+    }
+    if (network == CBaseChainParams::REGTEST) {
+        regTestParams.UpdateSubsidyHalvingIntervalFromArgs();
     }
 
     SelectBaseParams(network);
