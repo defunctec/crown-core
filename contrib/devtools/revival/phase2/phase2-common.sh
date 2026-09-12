@@ -109,10 +109,15 @@ halving_m = re.search(r'nSubsidyHalvingInterval\s*=\s*([0-9]+);', body)
 if not port_m or not halving_m:
     raise SystemExit('failed to parse mainnet port/halving interval')
 
-cp_section = re.search(r'static\s+Checkpoints::MapCheckpoints\s+mapCheckpoints\s*=\s*.*?;\nstatic\s+const\s+Checkpoints::CCheckpointData\s+data\s*=\s*\{', text, re.S)
+cp_section = re.search(
+    r'static\s+Checkpoints::MapCheckpoints\s+mapCheckpoints\s*=\s*(.*?)\s*;\s*'
+    r'static\s+const\s+Checkpoints::CCheckpointData\s+data\s*=\s*\{',
+    text,
+    re.S
+)
 if not cp_section:
     raise SystemExit('failed to parse mapCheckpoints section')
-cp_body = cp_section.group(0)
+cp_body = cp_section.group(1)
 checkpoints = []
 for h, hh in re.findall(r'\(\s*([0-9]+)\s*,\s*uint256S\("0x([0-9a-fA-F]+)"\)\s*\)', cp_body):
     checkpoints.append({"height": int(h), "hash": hh.lower()})

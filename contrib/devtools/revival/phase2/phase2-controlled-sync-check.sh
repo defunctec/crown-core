@@ -147,7 +147,7 @@ import json,sys
 i=json.load(open(sys.argv[1]))
 h=i.get('headers')
 b=i.get('blocks')
-print('1' if isinstance(h,int) and isinstance(b,int) and h <= b else '0')
+print('1' if isinstance(h,int) and isinstance(b,int) and h == b else '0')
 PY
 )"
 
