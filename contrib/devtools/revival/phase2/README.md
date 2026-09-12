@@ -16,6 +16,7 @@ This tooling is for local execution when `crown-old-chain.7z` is not available i
 - `phase2-prepare-working-copies.sh`
   - Verifies archive SHA256 (optional, recommended) and creates OFFLINE/SYNC disposable copies from an extracted source directory.
   - Recreates destination copy directories each run to avoid stale node state.
+  - Refuses to delete non-empty destinations unless they were previously created by this tooling.
 - `phase2-offline-baseline.sh`
   - Starts `crownd` with networking disabled, loopback-only RPC binding, and exports baseline JSON artifacts.
 - `phase2-controlled-sync-check.sh`

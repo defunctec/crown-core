@@ -86,10 +86,17 @@ PY
 start_crownd() {
   local datadir="$1"
   shift
-  local rpc_port
-  rpc_port="$(phase2_select_rpc_port "$datadir")"
-  printf '%s\n' "$rpc_port" > "$datadir/phase2-rpc-port"
-  "$CROWND_BIN" -datadir="$datadir" -server=1 -daemon=1 -pid="$datadir/crownd.phase2.pid" -rpcport="$rpc_port" "$@" >/dev/null
+  local rpc_port started=0
+  while IFS= read -r rpc_port; do
+    [ -n "$rpc_port" ] || continue
+    if "$CROWND_BIN" -datadir="$datadir" -server=1 -daemon=1 -pid="$datadir/crownd.phase2.pid" -rpcport="$rpc_port" "$@" >/dev/null 2>&1; then
+      printf '%s\n' "$rpc_port" > "$datadir/phase2-rpc-port"
+      started=1
+      break
+    fi
+  done < <(phase2_rpc_port_candidates "$datadir")
+
+  [ "$started" -eq 1 ] || die "Failed to start crownd for datadir $datadir with an available RPC port"
 }
 
 wait_rpc_ready() {
@@ -204,14 +211,14 @@ print(base + (h % span))
 PY
 }
 
-phase2_select_rpc_port() {
+phase2_rpc_port_candidates() {
   local datadir="$1"
   if [ -n "${PHASE2_RPC_PORT:-}" ]; then
     printf '%s\n' "$PHASE2_RPC_PORT"
     return 0
   fi
   python3 - "$datadir" "$PHASE2_RPC_PORT_BASE" "$PHASE2_RPC_PORT_SPAN" <<'PY'
-import hashlib, os, socket, sys
+import hashlib, os, sys
 path = os.path.realpath(sys.argv[1]).encode("utf-8")
 base = int(sys.argv[2])
 span = int(sys.argv[3])
@@ -221,16 +228,7 @@ h = int(hashlib.sha256(path).hexdigest()[:8], 16)
 start = base + (h % span)
 for i in range(span):
     port = base + ((start - base + i) % span)
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.settimeout(0.15)
-    try:
-        in_use = s.connect_ex(("127.0.0.1", port)) == 0
-    finally:
-        s.close()
-    if not in_use:
-        print(port)
-        raise SystemExit(0)
-raise SystemExit(f"No free RPC port in range {base}-{base+span-1}")
+    print(port)
 PY
 }
 
