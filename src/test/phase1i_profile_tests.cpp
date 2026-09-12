@@ -97,4 +97,37 @@ BOOST_AUTO_TEST_CASE(regtest_fast_profile_overrides_are_regtest_only)
     SelectParams(CBaseChainParams::UNITTEST);
 }
 
+BOOST_AUTO_TEST_CASE(regtest_override_validation_and_isolation)
+{
+    ScopedArgValue halvingArg("-regtestsubsidyhalvinginterval");
+    ScopedArgValue posArg("-regtestposstartheight");
+
+    mapArgs["-regtestsubsidyhalvinginterval"] = "0";
+    BOOST_CHECK_THROW(SelectParams(CBaseChainParams::REGTEST), std::runtime_error);
+
+    mapArgs["-regtestsubsidyhalvinginterval"] = "2147483648";
+    BOOST_CHECK_THROW(SelectParams(CBaseChainParams::REGTEST), std::runtime_error);
+
+    mapArgs.erase("-regtestsubsidyhalvinginterval");
+
+    mapArgs["-regtestposstartheight"] = "0";
+    BOOST_CHECK_THROW(SelectParams(CBaseChainParams::REGTEST), std::runtime_error);
+
+    mapArgs["-regtestposstartheight"] = "2147483648";
+    BOOST_CHECK_THROW(SelectParams(CBaseChainParams::REGTEST), std::runtime_error);
+
+    mapArgs["-regtestsubsidyhalvinginterval"] = "2100000";
+    mapArgs["-regtestposstartheight"] = "1200";
+
+    SelectParams(CBaseChainParams::MAIN);
+    BOOST_CHECK_EQUAL(Params().SubsidyHalvingInterval(), 2100000);
+    BOOST_CHECK_EQUAL(Params().PoSStartHeight(), 2330000);
+
+    SelectParams(CBaseChainParams::TESTNET);
+    BOOST_CHECK_EQUAL(Params().SubsidyHalvingInterval(), 130000);
+    BOOST_CHECK_EQUAL(Params().PoSStartHeight(), 141000);
+
+    SelectParams(CBaseChainParams::UNITTEST);
+}
+
 BOOST_AUTO_TEST_SUITE_END()

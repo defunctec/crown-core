@@ -746,12 +746,13 @@ void SelectParams(CBaseChainParams::Network network) {
     if (network == CBaseChainParams::DEVNET) {
         devNetParams = new CDevNetParams();
     }
+
+    SelectBaseParams(network);
+
     if (network == CBaseChainParams::REGTEST) {
         regTestParams.UpdateSubsidyHalvingIntervalFromArgs();
         regTestParams.UpdatePoSStartHeightFromArgs();
     }
-
-    SelectBaseParams(network);
     pCurrentParams = &Params(network);
 }
 
