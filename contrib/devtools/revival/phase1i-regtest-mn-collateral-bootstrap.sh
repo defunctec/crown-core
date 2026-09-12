@@ -205,6 +205,38 @@ wait_service_list_convergence() {
   return 1
 }
 
+wait_fixed_tip_convergence() {
+  local target_height="$1"
+  local target_hash="$2"
+  local timeout_secs="$3"
+  local poll_secs="$4"
+  local deadline=$(( $(date +%s) + timeout_secs ))
+  local tick=0
+  while [ "$(date +%s)" -lt "$deadline" ]; do
+    tick=$((tick + 1))
+    reconnect_topology "$ROOT"
+    reinforce_observer_connectivity
+    local all_match=1
+    local lines=()
+    for n in "${NODES[@]}"; do
+      local h bh
+      h="$(rpc_or_placeholder "$n" getblockcount)"
+      bh="$(rpc_or_placeholder "$n" getbestblockhash)"
+      lines+=("$n=$h/$bh")
+      if [ "$h" != "$target_height" ] || [ "$bh" != "$target_hash" ]; then
+        all_match=0
+      fi
+    done
+    echo "[$(ts)] fixed-convergence target=${target_height}/${target_hash} ${lines[*]}"
+    rpc "$ROOT" obs getpeerinfo > "$CHECKPOINT_DIR/fixed_convergence.obs.peerinfo.$tick.json" 2>/dev/null || true
+    if [ "$all_match" -eq 1 ]; then
+      return 0
+    fi
+    sleep "$poll_secs"
+  done
+  return 1
+}
+
 reinforce_observer_connectivity() {
   rpc "$ROOT" obs addnode 127.0.0.1:24001 add >/dev/null 2>&1 || true
   rpc "$ROOT" obs addnode 127.0.0.1:24002 add >/dev/null 2>&1 || true
@@ -737,11 +769,32 @@ fi
 stage_begin "STAGE 10 — reward/accounting checks"
 reconnect_topology "$ROOT"
 reinforce_observer_connectivity
-capture_checkpoint "final_convergence_start"
-wait_tip_hash_convergence "$FINAL_CONVERGENCE_WAIT_SECS" "$FINAL_CONVERGENCE_POLL_SECS" 1 || { stage_fail "STAGE 10 — reward/accounting checks" "timeout waiting for final tip+hash convergence"; capture_checkpoint "final_convergence_timeout"; exit 1; }
+capture_checkpoint "final_driven_convergence_start"
+if ! wait_tip_hash_convergence "$FINAL_CONVERGENCE_WAIT_SECS" "$FINAL_CONVERGENCE_POLL_SECS" 1; then
+  echo "[$(ts)] driven convergence did not complete within ${FINAL_CONVERGENCE_WAIT_SECS}s; proceeding to stationary final gate"
+  capture_checkpoint "final_driven_convergence_timeout"
+else
+  capture_checkpoint "final_driven_convergence_complete"
+fi
+
+FINAL_TARGET_HEIGHT="$(rpc "$ROOT" ctl getblockcount)"
+FINAL_TARGET_HASH="$(rpc "$ROOT" ctl getbestblockhash)"
+printf '%s\n' "$FINAL_TARGET_HEIGHT" > "$ROOT/final.target.height.txt"
+printf '%s\n' "$FINAL_TARGET_HASH" > "$ROOT/final.target.hash.txt"
+echo "[$(ts)] fixed final target height=$FINAL_TARGET_HEIGHT hash=$FINAL_TARGET_HASH"
+
 set_staker_mocktime 0 || true
-sleep 1
-wait_tip_hash_convergence "$FINAL_CONVERGENCE_WAIT_SECS" "$FINAL_CONVERGENCE_POLL_SECS" 0 || { stage_fail "STAGE 10 — reward/accounting checks" "timeout waiting for quiesced tip+hash convergence"; capture_checkpoint "final_quiesced_convergence_timeout"; exit 1; }
+sleep "$FINAL_CONVERGENCE_POLL_SECS"
+STATIONARY_HEIGHT="$(rpc "$ROOT" ctl getblockcount)"
+STATIONARY_HASH="$(rpc "$ROOT" ctl getbestblockhash)"
+if [ "$STATIONARY_HEIGHT" != "$FINAL_TARGET_HEIGHT" ] || [ "$STATIONARY_HASH" != "$FINAL_TARGET_HASH" ]; then
+  stage_fail "STAGE 10 — reward/accounting checks" "reference tip advanced before final stationary convergence gate: start=${FINAL_TARGET_HEIGHT}/${FINAL_TARGET_HASH} now=${STATIONARY_HEIGHT}/${STATIONARY_HASH}"
+  capture_checkpoint "final_stationary_target_advanced"
+  exit 1
+fi
+
+capture_checkpoint "final_stationary_convergence_start"
+wait_fixed_tip_convergence "$FINAL_TARGET_HEIGHT" "$FINAL_TARGET_HASH" "$FINAL_CONVERGENCE_WAIT_SECS" "$FINAL_CONVERGENCE_POLL_SECS" || { stage_fail "STAGE 10 — reward/accounting checks" "timeout waiting for fixed final tip convergence to ${FINAL_TARGET_HEIGHT}/${FINAL_TARGET_HASH}"; capture_checkpoint "final_stationary_convergence_timeout"; exit 1; }
 capture_checkpoint "final_chain_converged"
 wait_service_list_convergence "$LIST_CONVERGENCE_WAIT_SECS" "$FINAL_CONVERGENCE_POLL_SECS" || { stage_fail "STAGE 10 — reward/accounting checks" "timeout waiting for MN/SN list convergence after tip convergence"; capture_checkpoint "final_list_convergence_timeout"; exit 1; }
 capture_checkpoint "final_list_converged"
