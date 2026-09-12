@@ -82,12 +82,13 @@ for raw in open(conf, encoding='utf-8', errors='ignore'):
     if not line:
         continue
     compact=re.sub(r'\s+', '', line.lower())
-    if re.match(r'^(testnet|regtest)\s*=\s*1$', compact):
+    if compact.startswith('[') and compact.endswith(']') and compact in ('[main]','[test]','[regtest]'):
         bad.append(raw.rstrip('\n'))
-    if re.match(r'^devnet\s*=', compact) and compact not in ('devnet=0',):
+        continue
+    if re.match(r'^(testnet|regtest|devnet|chain)\s*=', compact):
         bad.append(raw.rstrip('\n'))
 if bad:
-    print("Non-mainnet configuration detected in crown.conf:")
+    print("Chain-selection configuration detected in crown.conf (not allowed for Phase 2 runtime datadirs):")
     for item in bad:
         print(item)
     raise SystemExit(1)
@@ -98,6 +99,7 @@ start_crownd() {
   local datadir="$1"
   shift
   local rpc_port started=0
+  rm -f "$datadir/phase2-rpc-port"
   while IFS= read -r rpc_port; do
     [ -n "$rpc_port" ] || continue
     if "$CROWND_BIN" -datadir="$datadir" -server=1 -daemon=1 -pid="$datadir/crownd.phase2.pid" -rpcport="$rpc_port" "$@" >/dev/null 2>&1; then
@@ -152,6 +154,7 @@ stop_crownd() {
     sleep 1
     waited=$((waited + 1))
   done
+  rm -f "$datadir/crownd.phase2.pid" "$datadir/phase2-rpc-port"
 }
 
 rpc() {
