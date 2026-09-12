@@ -237,6 +237,20 @@ wait_fixed_tip_convergence() {
   return 1
 }
 
+quiesce_stakers_with_past_mocktime() {
+  for n in mn1 sn1; do
+    local tip_hash tip_time fixed_time
+    tip_hash="$(rpc "$ROOT" "$n" getbestblockhash)"
+    tip_time="$(rpc "$ROOT" "$n" getblock "$tip_hash" | python3 -c 'import json,sys; print(json.load(sys.stdin)["time"])')"
+    fixed_time=$((tip_time - 1))
+    if [ "$fixed_time" -le 0 ]; then
+      fixed_time=1
+    fi
+    rpc "$ROOT" "$n" setmocktime "$fixed_time" >/dev/null
+    echo "[$(ts)] staking-quiesce node=$n tip_hash=$tip_hash tip_time=$tip_time fixed_mocktime=$fixed_time"
+  done
+}
+
 reinforce_observer_connectivity() {
   rpc "$ROOT" obs addnode 127.0.0.1:24001 add >/dev/null 2>&1 || true
   rpc "$ROOT" obs addnode 127.0.0.1:24002 add >/dev/null 2>&1 || true
@@ -777,14 +791,17 @@ else
   capture_checkpoint "final_driven_convergence_complete"
 fi
 
-set_staker_mocktime 0 || true
+quiesce_stakers_with_past_mocktime
 STATIONARY_HEIGHT_A="$(rpc "$ROOT" ctl getblockcount)"
 STATIONARY_HASH_A="$(rpc "$ROOT" ctl getbestblockhash)"
 sleep "$FINAL_CONVERGENCE_POLL_SECS"
+STATIONARY_HEIGHT_MID="$(rpc "$ROOT" ctl getblockcount)"
+STATIONARY_HASH_MID="$(rpc "$ROOT" ctl getbestblockhash)"
+sleep "$FINAL_CONVERGENCE_POLL_SECS"
 STATIONARY_HEIGHT_B="$(rpc "$ROOT" ctl getblockcount)"
 STATIONARY_HASH_B="$(rpc "$ROOT" ctl getbestblockhash)"
-if [ "$STATIONARY_HEIGHT_A" != "$STATIONARY_HEIGHT_B" ] || [ "$STATIONARY_HASH_A" != "$STATIONARY_HASH_B" ]; then
-  stage_fail "STAGE 10 — reward/accounting checks" "reference tip advanced after staking quiesced: start=${STATIONARY_HEIGHT_A}/${STATIONARY_HASH_A} now=${STATIONARY_HEIGHT_B}/${STATIONARY_HASH_B}"
+if [ "$STATIONARY_HEIGHT_A" != "$STATIONARY_HEIGHT_MID" ] || [ "$STATIONARY_HASH_A" != "$STATIONARY_HASH_MID" ] || [ "$STATIONARY_HEIGHT_MID" != "$STATIONARY_HEIGHT_B" ] || [ "$STATIONARY_HASH_MID" != "$STATIONARY_HASH_B" ]; then
+  stage_fail "STAGE 10 — reward/accounting checks" "STAKING QUIESCE FAILED: ctl tip advanced while quiescing; start=${STATIONARY_HEIGHT_A}/${STATIONARY_HASH_A} mid=${STATIONARY_HEIGHT_MID}/${STATIONARY_HASH_MID} end=${STATIONARY_HEIGHT_B}/${STATIONARY_HASH_B}"
   capture_checkpoint "final_stationary_target_advanced"
   exit 1
 fi
