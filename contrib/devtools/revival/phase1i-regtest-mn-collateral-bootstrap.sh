@@ -238,7 +238,7 @@ wait_fixed_tip_convergence() {
 }
 
 quiesce_stakers_with_past_mocktime() {
-  for n in mn1 sn1; do
+  for n in ctl mn1 sn1; do
     local tip_hash tip_time fixed_time
     tip_hash="$(rpc "$ROOT" "$n" getbestblockhash)"
     tip_time="$(rpc "$ROOT" "$n" getblock "$tip_hash" | python3 -c 'import json,sys; print(json.load(sys.stdin)["time"])')"
