@@ -9,6 +9,8 @@ ROOT="$1"
 BIN_DIR="${BIN_DIR:-$(cd "$(dirname "$0")/../../.." && pwd)/src}"
 RPC_USER="${RPC_USER:-rt}"
 RPC_PASS="${RPC_PASS:-phase1d}"
+REGTEST_SUBSIDY_HALVING_INTERVAL="${REGTEST_SUBSIDY_HALVING_INTERVAL:-}"
+REGTEST_POS_START_HEIGHT="${REGTEST_POS_START_HEIGHT:-}"
 NODES=(ctl mn1 sn1 obs)
 
 mkdir -p "$ROOT"
@@ -44,6 +46,12 @@ logtimestamps=1
 printtoconsole=0
 txindex=1
 CFG
+  if [ -n "$REGTEST_SUBSIDY_HALVING_INTERVAL" ]; then
+    echo "regtestsubsidyhalvinginterval=$REGTEST_SUBSIDY_HALVING_INTERVAL" >> "$ROOT/$n/crown.conf"
+  fi
+  if [ -n "$REGTEST_POS_START_HEIGHT" ]; then
+    echo "regtestposstartheight=$REGTEST_POS_START_HEIGHT" >> "$ROOT/$n/crown.conf"
+  fi
   chmod 600 "$ROOT/$n/crown.conf"
 }
 
