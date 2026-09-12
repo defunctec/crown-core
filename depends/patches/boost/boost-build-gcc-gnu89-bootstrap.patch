@@ -1,0 +1,10 @@
+--- a/tools/build/src/engine/build.sh
++++ b/tools/build/src/engine/build.sh
+@@ -150,6 +150,7 @@ case $BOOST_JAM_TOOLSET in
+ 
+         *)
+         BOOST_JAM_CC=gcc
++        BOOST_JAM_OPT_JAM="$BOOST_JAM_OPT_JAM -std=gnu89"
+         esac
+     ;;
+ 
