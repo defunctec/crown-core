@@ -262,12 +262,6 @@ start_crownd() {
         if [ -z "$pid" ] && [ -f "$datadir/crownd.phase2.pid" ]; then
           pid="$(tr -cd '0-9' < "$datadir/crownd.phase2.pid" || true)"
         fi
-        if [ -z "$pid" ]; then
-          pid="$(phase2_find_crownd_pid_for_datadir "$datadir" || true)"
-          if [ -n "$pid" ] && [ ! -f "$datadir/crownd.phase2.pid" ]; then
-            printf '%s\n' "$pid" > "$datadir/crownd.phase2.pid"
-          fi
-        fi
         if [ -n "$pid" ] && ! kill -0 "$pid" >/dev/null 2>&1; then
           break
         fi
@@ -348,8 +342,14 @@ wait_rpc_ready() {
         return 1
       fi
     fi
-    sleep 2
-    waited=$((waited + 2))
+    local remaining sleep_step
+    remaining=$((max_wait - waited))
+    sleep_step=2
+    if [ "$remaining" -lt "$sleep_step" ]; then
+      sleep_step="$remaining"
+    fi
+    sleep "$sleep_step"
+    waited=$((waited + sleep_step))
   done
   log "RPC readiness timed out after ${max_wait}s while crownd remained running (datadir=$datadir)"
   return 1
