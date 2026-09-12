@@ -52,12 +52,16 @@ Build verification executed:
 
 Execution model: native localhost-only disposable regtest network under `/tmp/crown-phase1h-runtime`.
 
+Repeatable tooling added: `contrib/devtools/revival/phase1h-full-validation.sh` (requires `SYSTEMNODE_SERVICE_ADDR` to be set explicitly for the generated `systemnode.conf` service-address field).
+
 | Node | Role | RPC | P2P | Bind scope |
 | --- | --- | ---: | ---: | --- |
 | `ctl` | controller/funding/miner | 18401 | 24001 | `127.0.0.1` |
 | `mn1` | masternode participant peer | 18402 | 24002 | `127.0.0.1` |
 | `sn1` | systemnode participant | 18403 | 24003 | `127.0.0.1` |
 | `obs` | independent observer | 18404 | 24004 | `127.0.0.1` |
+
+Registration metadata note: `systemnode.conf` used a routable service address string for broadcast validation compatibility, while all actual peer transport remained loopback-only.
 
 Initial chain/network identity on all four nodes:
 
@@ -81,7 +85,7 @@ Validated on the fresh network:
 - all nodes started and accepted RPC
 - peer connections formed and remained active
 - block propagation converged across nodes
-- ordinary transaction propagation worked (raw transaction path due regtest address limitation)
+- ordinary transaction propagation worked (raw transaction path due to regtest address limitation)
 - restart/resync behavior worked for service and observer roles
 
 Transaction propagation evidence (second probe):
@@ -114,8 +118,8 @@ Observed mature spendable total at runtime: `2395.72 CRW` (far below `10000 CRW`
 Deterministic source-based cap on this regtest emission profile:
 
 - halving interval `150`, subsidy right-shifted each interval (`src/main.cpp:1716-1732`, `src/chainparams.cpp:583`)
-- reward reaches zero by height `9600` (`64 * 150`)
-- maximum theoretical cumulative subsidy before zeroing: `3587.99998500 CRW`
+- last positive subsidy height is `4649`; first zero-subsidy height is `4650` (integer right-shift behavior in `GetSubsidy`)
+- maximum theoretical cumulative subsidy upper bound before zeroing: `3599.99998500 CRW`
 
 Result: **masternode collateral cannot be reached on this regtest configuration without changing production economics/params**.
 
@@ -129,7 +133,7 @@ Invalid/too-early cases:
 
 Valid case:
 
-- after waiting past collateral 15-confirmation block time, `systemnode start-alias sn1` succeeded
+- after maturity-time gating, bounded retries of `systemnode start-alias sn1` reached a successful registration
 - all four nodes converged to `systemnode count = 1`
 - all four nodes agreed on status map: `{6c7f...9f29-0: ENABLED}`
 
@@ -165,6 +169,7 @@ Activation boundary status in this run:
 - final pre-MNPoS height reached: `746`
 - configured activation height on this chain: `141000`
 - first MNPoS-relevant height: `141000`
+- boundary interpretation: `140999` is the last permissible PoW height; `141000` is the first PoS-required height
 - activation crossed: **NO**
 
 ## 9. Repeated block/payment observations (pre-activation)
@@ -261,7 +266,7 @@ Classification: **deterministic environment-level blocker for full regtest MN+SN
 Deterministic facts:
 
 1. Masternode collateral required by source is `10000 CRW`.
-2. Regtest subsidy-halving profile (`interval=150`) hard-caps total mintable subsidy at `~3588 CRW` before right-shift zeroing.
+2. Regtest subsidy-halving profile (`interval=150`) hard-caps total mintable subsidy at `~3600 CRW` (upper bound) before right-shift zeroing.
 3. Therefore, fresh regtest cannot fund a masternode collateral under unchanged production rules.
 4. Without a masternode, full MN+SN payout-combination coverage and full intended end-to-end MNPoS validation target cannot be completed in this environment.
 
@@ -291,7 +296,7 @@ Accounting verdict:
 | P2P | PASS | startup/connectivity, block/tx propagation, tip convergence |
 | MASTERNODE REGISTRATION | NOT TESTED | deterministic inability to fund 10000 CRW collateral on this regtest profile |
 | SYSTEMNODE REGISTRATION | PASS | invalid-too-early rejection consistency + eventual converged success |
-| MNPOS ACTIVATION | FAIL | activation height `141000` not reached (run ended at `746`) |
+| MNPOS ACTIVATION | NOT TESTED | activation height `141000` not reached (run ended at `746`, blocked by phase scope/runtime limits) |
 | BLOCK PRODUCTION | PARTIAL | stable repeated pre-activation blocks; post-activation PoS not exercised |
 | BLOCK VALIDATION | PARTIAL | peer acceptance verified pre-activation; post-activation PoS validation not exercised |
 | MN PAYMENTS | NOT TESTED | no funded masternode |
