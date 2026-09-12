@@ -391,7 +391,7 @@ assert_no_crownd_for_datadir() {
         comm="$(ps -p "$candidate" -o comm= 2>/dev/null | tr -d '\r\n' || true)"
         args="$(ps -p "$candidate" -o args= 2>/dev/null || true)"
         [[ "$comm" == *crownd* ]] || continue
-        if [[ "$args" == *"-datadir=$canonical"* ]] || [[ "$args" == *"-datadir $canonical"* ]]; then
+        if phase2_args_match_datadir "$canonical" "$args"; then
           die "A crownd process with matching -datadir is already running: $datadir"
         fi
       done < <(pgrep -f -- "crownd.*-datadir" || true)
@@ -481,7 +481,7 @@ PY
       comm="$(ps -p "$candidate" -o comm= 2>/dev/null | tr -d '\r\n' || true)"
       args="$(ps -p "$candidate" -o args= 2>/dev/null || true)"
       [[ "$comm" == *crownd* ]] || continue
-      if [[ "$args" == *"-datadir=$canonical"* ]] || [[ "$args" == *"-datadir $canonical"* ]]; then
+      if phase2_args_match_datadir "$canonical" "$args"; then
         printf '%s\n' "$candidate"
         return 0
       fi
@@ -491,6 +491,30 @@ PY
   fi
 
   printf '\n'
+}
+
+phase2_args_match_datadir() {
+  local canonical="$1"
+  local args="$2"
+  python3 - "$canonical" "$args" <<'PY'
+import os, shlex, sys
+target = os.path.realpath(sys.argv[1])
+args_text = sys.argv[2]
+try:
+    parts = shlex.split(args_text)
+except Exception:
+    parts = args_text.split()
+for i, arg in enumerate(parts):
+    if arg.startswith('-datadir='):
+        value = arg.split('=', 1)[1]
+    elif arg == '-datadir' and i + 1 < len(parts):
+        value = parts[i + 1]
+    else:
+        continue
+    if os.path.realpath(value) == target:
+        raise SystemExit(0)
+raise SystemExit(1)
+PY
 }
 
 phase2_rpc_port() {
