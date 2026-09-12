@@ -784,11 +784,11 @@ stage_begin "STAGE 10 — reward/accounting checks"
 reconnect_topology "$ROOT"
 reinforce_observer_connectivity
 capture_checkpoint "final_driven_convergence_start"
-if ! wait_tip_hash_convergence "$FINAL_CONVERGENCE_WAIT_SECS" "$FINAL_CONVERGENCE_POLL_SECS" 1; then
+if ! wait_tip_hash_convergence "$FINAL_CONVERGENCE_WAIT_SECS" "$FINAL_CONVERGENCE_POLL_SECS" 0; then
   echo "[$(ts)] driven convergence did not complete within ${FINAL_CONVERGENCE_WAIT_SECS}s; proceeding to stationary final gate"
   capture_checkpoint "final_driven_convergence_timeout"
 else
-  capture_checkpoint "final_driven_convergence_complete"
+  echo "[$(ts)] driven convergence observed; proceeding to quiesced fixed-target gate"
 fi
 
 quiesce_stakers_with_past_mocktime
