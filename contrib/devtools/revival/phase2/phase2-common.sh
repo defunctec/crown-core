@@ -385,15 +385,16 @@ assert_no_crownd_for_datadir() {
 
   if [ ! -d /proc ]; then
     if command -v pgrep >/dev/null 2>&1; then
-      local escaped
-      escaped="$(python3 - "$canonical" <<'PY'
-import re,sys
-print(re.escape(sys.argv[1]))
-PY
-)"
-      if pgrep -f "crownd(.+)?-datadir(=| )${escaped}" >/dev/null 2>&1; then
-        die "A crownd process with matching -datadir is already running: $datadir"
-      fi
+      while IFS= read -r candidate; do
+        [ -n "$candidate" ] || continue
+        local comm args
+        comm="$(ps -p "$candidate" -o comm= 2>/dev/null | tr -d '\r\n' || true)"
+        args="$(ps -p "$candidate" -o args= 2>/dev/null || true)"
+        [[ "$comm" == *crownd* ]] || continue
+        if [[ "$args" == *"-datadir=$canonical"* ]] || [[ "$args" == *"-datadir $canonical"* ]]; then
+          die "A crownd process with matching -datadir is already running: $datadir"
+        fi
+      done < <(pgrep -f -- "crownd.*-datadir" || true)
     else
       die "Cannot verify active crownd process for datadir safety: neither /proc nor pgrep is available"
     fi
