@@ -148,25 +148,31 @@ start_crownd() {
   while IFS= read -r rpc_port; do
     [ -n "$rpc_port" ] || continue
     if "$CROWND_BIN" -datadir="$datadir" -server=1 -daemon=1 -pid="$datadir/crownd.phase2.pid" -rpcport="$rpc_port" -rpcuser="$rpc_user" -rpcpassword="$rpc_password" "$@" >/dev/null 2>&1; then
-      local pid ready waited
+      local pid launched waited
       pid=""
-      ready=0
+      launched=0
       waited=0
       while [ "$waited" -lt 10 ]; do
         if [ -z "$pid" ] && [ -f "$datadir/crownd.phase2.pid" ]; then
           pid="$(tr -cd '0-9' < "$datadir/crownd.phase2.pid" || true)"
         fi
+        if [ -z "$pid" ]; then
+          pid="$(phase2_find_crownd_pid_for_datadir "$datadir" || true)"
+          if [ -n "$pid" ] && [ ! -f "$datadir/crownd.phase2.pid" ]; then
+            printf '%s\n' "$pid" > "$datadir/crownd.phase2.pid"
+          fi
+        fi
         if [ -n "$pid" ] && ! kill -0 "$pid" >/dev/null 2>&1; then
           break
         fi
-        if "$CROWNCLI_BIN" -datadir="$datadir" -rpcconnect=127.0.0.1 -rpcport="$rpc_port" -rpcuser="$rpc_user" -rpcpassword="$rpc_password" getblockcount >/dev/null 2>&1; then
-          ready=1
+        if [ -n "$pid" ] && kill -0 "$pid" >/dev/null 2>&1; then
+          launched=1
           break
         fi
         sleep 1
         waited=$((waited + 1))
       done
-      if [ "$ready" -eq 1 ]; then
+      if [ "$launched" -eq 1 ]; then
         printf '%s\n' "$rpc_port" > "$datadir/phase2-rpc-port"
         started=1
         break
@@ -193,16 +199,33 @@ start_crownd() {
 wait_rpc_ready() {
   local datadir="$1"
   local max_wait="${2:-180}"
-  local waited=0 rpc_user rpc_password
+  local waited=0 rpc_user rpc_password pid
   rpc_user="$(phase2_rpc_user "$datadir")"
   rpc_password="$(phase2_rpc_password "$datadir")"
+  pid=""
+  if [ -f "$datadir/crownd.phase2.pid" ]; then
+    pid="$(tr -cd '0-9' < "$datadir/crownd.phase2.pid" || true)"
+  fi
   while [ "$waited" -lt "$max_wait" ]; do
     if "$CROWNCLI_BIN" -datadir="$datadir" -rpcconnect=127.0.0.1 -rpcport="$(phase2_rpc_port "$datadir")" -rpcuser="$rpc_user" -rpcpassword="$rpc_password" getblockcount >/dev/null 2>&1; then
       return 0
     fi
+    if [ -z "$pid" ]; then
+      if [ -f "$datadir/crownd.phase2.pid" ]; then
+        pid="$(tr -cd '0-9' < "$datadir/crownd.phase2.pid" || true)"
+      fi
+      if [ -z "$pid" ]; then
+        pid="$(phase2_find_crownd_pid_for_datadir "$datadir" || true)"
+      fi
+    fi
+    if [ -n "$pid" ] && ! kill -0 "$pid" >/dev/null 2>&1; then
+      log "crownd exited before RPC became ready (pid=$pid, waited=${waited}s, datadir=$datadir)"
+      return 1
+    fi
     sleep 2
     waited=$((waited + 2))
   done
+  log "RPC readiness timed out after ${max_wait}s while crownd remained running (datadir=$datadir)"
   return 1
 }
 
@@ -309,7 +332,8 @@ import glob, os, sys
 target = os.path.realpath(sys.argv[1])
 for cmdline_path in glob.glob('/proc/[0-9]*/cmdline'):
     try:
-        raw = open(cmdline_path, 'rb').read()
+        with open(cmdline_path, 'rb') as f:
+            raw = f.read()
     except Exception:
         continue
     if not raw:
@@ -335,6 +359,58 @@ PY
     1) die "A crownd process with matching -datadir is already running: $datadir" ;;
     *) die "Failed to inspect running processes for datadir lock safety: $datadir" ;;
   esac
+}
+
+phase2_find_crownd_pid_for_datadir() {
+  local datadir="$1"
+  local canonical
+  canonical="$(canonical_path "$datadir")"
+
+  if [ -d /proc ]; then
+    python3 - "$canonical" <<'PY'
+import glob, os, sys
+target = os.path.realpath(sys.argv[1])
+for cmdline_path in glob.glob('/proc/[0-9]*/cmdline'):
+    try:
+        with open(cmdline_path, 'rb') as f:
+            raw = f.read()
+    except Exception:
+        continue
+    if not raw:
+        continue
+    parts = [p.decode('utf-8', errors='ignore') for p in raw.split(b'\x00') if p]
+    if not parts:
+        continue
+    exe = os.path.basename(parts[0]).lower()
+    if 'crownd' not in exe:
+        continue
+    for i, arg in enumerate(parts):
+        if arg.startswith('-datadir='):
+            value = arg.split('=', 1)[1]
+        elif arg == '-datadir' and i + 1 < len(parts):
+            value = parts[i + 1]
+        else:
+            continue
+        if os.path.realpath(value) == target:
+            print(os.path.basename(os.path.dirname(cmdline_path)))
+            raise SystemExit(0)
+print("")
+PY
+    return 0
+  fi
+
+  if command -v pgrep >/dev/null 2>&1; then
+    local escaped
+    escaped="$(python3 - "$canonical" <<'PY'
+import re,sys
+print(re.escape(sys.argv[1]))
+PY
+)"
+    pgrep -f "crownd(.+)?-datadir(=| )${escaped}" | head -n 1 || true
+    return 0
+  fi
+
+  printf '\n'
 }
 
 phase2_rpc_port() {
