@@ -67,7 +67,7 @@ cleanup() {
 trap cleanup EXIT
 
 log "Starting offline baseline against disposable working copy: $DATADIR"
-start_crownd "$DATADIR" -testnet=0 -regtest=0 -listen=0 -dnsseed=0 -dns=0 -discover=0 -upnp=0 -connect=0 -maxconnections=0 -rpcbind=127.0.0.1 -rpcallowip=127.0.0.1 -rpcallowip=::1
+start_crownd "$DATADIR" -testnet=0 -regtest=0 -listen=0 -dnsseed=0 -dns=0 -discover=0 -upnp=0 -connect=0 -maxconnections=0 -onlynet=ipv4 -rpcbind=127.0.0.1 -rpcallowip=127.0.0.1
 wait_rpc_ready "$DATADIR" 240 || die "crownd RPC did not become ready for offline baseline"
 
 rpc "$DATADIR" getblockchaininfo > "$OUTDIR/blockchaininfo.json"
