@@ -474,12 +474,6 @@ PY
   fi
 
   if command -v pgrep >/dev/null 2>&1; then
-    local escaped
-    escaped="$(python3 - "$canonical" <<'PY'
-import re,sys
-print(re.escape(sys.argv[1]))
-PY
-)"
     while IFS= read -r candidate; do
       [ -n "$candidate" ] || continue
       local comm args
@@ -490,7 +484,7 @@ PY
         printf '%s\n' "$candidate"
         return 0
       fi
-    done < <(pgrep -f -- "-datadir(=| )${escaped}" || true)
+    done < <(pgrep -f -- "crownd.*-datadir" || true)
     printf '\n'
     return 0
   fi
