@@ -34,7 +34,8 @@ PY
 
 is_archive_path() {
   local p="$1"
-  [[ "$p" =~ \.(7z|zip|tar|tar\.gz|tgz)$ ]]
+  local lower="${p,,}"
+  [[ "$lower" =~ \.(7z|zip|tar|tar\.gz|tgz)$ ]]
 }
 
 ensure_disposable_chaincopy_dir() {
@@ -58,8 +59,8 @@ wait_rpc_ready() {
     if "$CROWNCLI_BIN" -datadir="$datadir" getblockcount >/dev/null 2>&1; then
       return 0
     fi
-    sleep 1
-    waited=$((waited + 1))
+    sleep 2
+    waited=$((waited + 2))
   done
   return 1
 }
@@ -125,14 +126,22 @@ halving_m = re.search(r'nSubsidyHalvingInterval\s*=\s*([0-9]+);', body)
 if not port_m or not halving_m:
     raise SystemExit('failed to parse mainnet port/halving interval')
 
+data_section = re.search(
+    r'static\s+const\s+Checkpoints::CCheckpointData\s+data\s*=\s*\{\s*&([A-Za-z0-9_]+)\s*,',
+    text,
+    re.S
+)
+if not data_section:
+    raise SystemExit('failed to parse mainnet checkpoint data pointer')
+checkpoint_var = data_section.group(1)
 cp_section = re.search(
-    r'static\s+Checkpoints::MapCheckpoints\s+mapCheckpoints\s*=\s*(.*?)\s*;\s*'
-    r'static\s+const\s+Checkpoints::CCheckpointData\s+data\s*=\s*\{',
+    rf'static\s+Checkpoints::MapCheckpoints\s+{checkpoint_var}\s*=\s*(.*?)\s*;\s*'
+    rf'static\s+const\s+Checkpoints::CCheckpointData\s+data\s*=',
     text,
     re.S
 )
 if not cp_section:
-    raise SystemExit('failed to parse mapCheckpoints section')
+    raise SystemExit(f'failed to parse checkpoint map for {checkpoint_var}')
 cp_body = cp_section.group(1)
 checkpoints = []
 for h, hh in re.findall(r'\(\s*([0-9]+)\s*,\s*uint256S\("0x([0-9a-fA-F]+)"\)\s*\)', cp_body):
