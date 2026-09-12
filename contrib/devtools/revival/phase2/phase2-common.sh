@@ -44,7 +44,10 @@ ensure_phase2_rpc_credentials() {
   pass_file="$(phase2_rpc_password_file "$datadir")"
 
   if [ ! -s "$user_file" ]; then
-    printf '%s\n' "phase2rpc" > "$user_file"
+    python3 - <<'PY' > "$user_file"
+import secrets
+print(f"phase2rpc_{secrets.token_hex(4)}")
+PY
   fi
   if [ ! -s "$pass_file" ]; then
     python3 - <<'PY' > "$pass_file"
@@ -147,12 +150,12 @@ start_crownd() {
     if "$CROWND_BIN" -datadir="$datadir" -server=1 -daemon=1 -pid="$datadir/crownd.phase2.pid" -rpcport="$rpc_port" -rpcuser="$rpc_user" -rpcpassword="$rpc_password" "$@" >/dev/null 2>&1; then
       local pid ready waited
       pid=""
-      if [ -f "$datadir/crownd.phase2.pid" ]; then
-        pid="$(tr -cd '0-9' < "$datadir/crownd.phase2.pid" || true)"
-      fi
       ready=0
       waited=0
       while [ "$waited" -lt 10 ]; do
+        if [ -z "$pid" ] && [ -f "$datadir/crownd.phase2.pid" ]; then
+          pid="$(tr -cd '0-9' < "$datadir/crownd.phase2.pid" || true)"
+        fi
         if [ -n "$pid" ] && ! kill -0 "$pid" >/dev/null 2>&1; then
           break
         fi
