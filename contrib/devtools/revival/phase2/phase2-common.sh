@@ -278,14 +278,20 @@ wait_rpc_ready() {
 
 stop_crownd() {
   local datadir="$1"
-  local port pid waited rpc_user rpc_password port_from_file=0
+  local port pid waited rpc_user rpc_password port_known=0
   if [ -f "$datadir/phase2-rpc-port" ]; then
     port="$(tr -cd '0-9' < "$datadir/phase2-rpc-port" || true)"
     if [ -n "$port" ]; then
-      port_from_file=1
+      port_known=1
     fi
   fi
-  if [ "$port_from_file" -eq 0 ]; then
+  if [ "$port_known" -eq 0 ]; then
+    port="$(phase2_discover_rpc_port_for_datadir "$datadir" || true)"
+    if [ -n "$port" ]; then
+      port_known=1
+    fi
+  fi
+  if [ "$port_known" -eq 0 ]; then
     port="$(phase2_default_rpc_port "$datadir")"
   fi
   rpc_user="$(phase2_rpc_user "$datadir")"
@@ -295,7 +301,7 @@ stop_crownd() {
     pid="$(tr -cd '0-9' < "$datadir/crownd.phase2.pid" || true)"
   fi
 
-  if [ "$port_from_file" -eq 1 ]; then
+  if [ "$port_known" -eq 1 ]; then
     "$CROWNCLI_BIN" -datadir="$datadir" -rpcconnect=127.0.0.1 -rpcport="$port" -rpcuser="$rpc_user" -rpcpassword="$rpc_password" stop >/dev/null 2>&1 || true
   fi
 
@@ -305,7 +311,7 @@ stop_crownd() {
     if [ -n "$pid" ] && kill -0 "$pid" >/dev/null 2>&1; then
       pid_alive=1
     fi
-    if [ "$port_from_file" -eq 1 ]; then
+    if [ "$port_known" -eq 1 ]; then
       if "$CROWNCLI_BIN" -datadir="$datadir" -rpcconnect=127.0.0.1 -rpcport="$port" -rpcuser="$rpc_user" -rpcpassword="$rpc_password" getblockcount >/dev/null 2>&1; then
         rpc_alive=1
       fi
@@ -320,7 +326,7 @@ stop_crownd() {
   if [ -n "$pid" ] && kill -0 "$pid" >/dev/null 2>&1; then
     pid_alive_final=1
   fi
-  if [ "$port_from_file" -eq 1 ]; then
+  if [ "$port_known" -eq 1 ]; then
     if "$CROWNCLI_BIN" -datadir="$datadir" -rpcconnect=127.0.0.1 -rpcport="$port" -rpcuser="$rpc_user" -rpcpassword="$rpc_password" getblockcount >/dev/null 2>&1; then
       rpc_alive_final=1
     fi
