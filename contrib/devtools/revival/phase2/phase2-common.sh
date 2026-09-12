@@ -13,6 +13,40 @@ log() {
   printf '[phase2] %s\n' "$*" >&2
 }
 
+phase2_discover_rpc_port_for_datadir() {
+  local datadir="$1"
+  local pid
+  pid="$(phase2_find_crownd_pid_for_datadir "$datadir" || true)"
+  [ -n "$pid" ] || { printf '\n'; return 0; }
+
+  if [ -r "/proc/$pid/cmdline" ]; then
+    python3 - "$pid" <<'PY'
+import sys
+pid=sys.argv[1]
+try:
+    with open(f"/proc/{pid}/cmdline","rb") as f:
+        raw=f.read()
+except Exception:
+    print("")
+    raise SystemExit(0)
+parts=[p.decode("utf-8", errors="ignore") for p in raw.split(b"\x00") if p]
+for i, arg in enumerate(parts):
+    if arg.startswith('-rpcport='):
+        v=arg.split('=',1)[1]
+        print(v if v.isdigit() else "")
+        raise SystemExit(0)
+    if arg == '-rpcport' and i + 1 < len(parts):
+        v=parts[i+1]
+        print(v if v.isdigit() else "")
+        raise SystemExit(0)
+print("")
+PY
+    return 0
+  fi
+
+  printf '\n'
+}
+
 die() {
   printf '[phase2][error] %s\n' "$*" >&2
   exit 1
@@ -435,6 +469,12 @@ phase2_rpc_port() {
       printf '%s\n' "$file_port"
       return 0
     fi
+  fi
+  local discovered_port
+  discovered_port="$(phase2_discover_rpc_port_for_datadir "$datadir" || true)"
+  if [ -n "$discovered_port" ]; then
+    printf '%s\n' "$discovered_port"
+    return 0
   fi
   phase2_default_rpc_port "$datadir"
 }
