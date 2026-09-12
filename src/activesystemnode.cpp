@@ -132,14 +132,13 @@ void CActiveSystemnode::ManageStatus()
                 return;
             }
 
-            int nDoS = 0;
-            if (!snodeman.CheckSnbAndUpdateSystemnodeList(mnb, nDoS)) {
-                notCapableReason = "Systemnode broadcast rejected by local validation. See debug.log for details.";
-                LogPrintf("CActiveSystemnode::ManageStatus() - %s\n", notCapableReason);
-                return;
-            }
+            //update to masternode list
+            LogPrintf("CActiveSystemnode::ManageStatus() - Update Systemnode List\n");
+            snodeman.UpdateSystemnodeList(mnb);
 
-            LogPrintf("CActiveSystemnode::ManageStatus() - Accepted local Systemnode broadcast vin = %s\n", vin.ToString());
+            //send to all peers
+            LogPrintf("CActiveSystemnode::ManageStatus() - Relay broadcast vin = %s\n", vin.ToString());
+            mnb.Relay();
 
             LogPrintf("CActiveSystemnode::ManageStatus() - Is capable master node!\n");
             status = ACTIVE_SYSTEMNODE_STARTED;

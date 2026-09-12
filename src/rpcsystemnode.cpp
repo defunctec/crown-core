@@ -225,16 +225,16 @@ if (strCommand == "start-alias")
             }
 
             bool result = CSystemnodeBroadcast::Create(mne.getIp(), mne.getPrivKey(), mne.getTxHash(), mne.getOutputIndex(), errorMessage, snb);
-
-            statusObj.push_back(Pair("result", result ? "successful" : "failed"));
             if (result) {
                 int nDoS = 0;
                 if (!snodeman.CheckSnbAndUpdateSystemnodeList(snb, nDoS)) {
-                    statusObj.pop_back();
-                    statusObj.push_back(Pair("result", "failed"));
-                    statusObj.push_back(Pair("errorMessage", "Systemnode broadcast rejected by local validation. See debug.log for details."));
+                    result = false;
+                    errorMessage = "Systemnode broadcast rejected by local validation. See debug.log for details.";
                 }
-            } else {
+            }
+
+            statusObj.push_back(Pair("result", result ? "successful" : "failed"));
+            if (!result) {
                 statusObj.push_back(Pair("errorMessage", errorMessage));
             }
             break;
@@ -340,7 +340,6 @@ if (strCommand == "start-alias")
 
             Object statusObj;
             statusObj.push_back(Pair("alias", mne.getAlias()));
-            statusObj.push_back(Pair("result", result ? "successful" : "failed"));
 
             if (result) {
                 int nDoS = 0;
@@ -348,12 +347,15 @@ if (strCommand == "start-alias")
                     successful++;
                 } else {
                     failed++;
-                    statusObj.pop_back();
-                    statusObj.push_back(Pair("result", "failed"));
-                    statusObj.push_back(Pair("errorMessage", "Systemnode broadcast rejected by local validation. See debug.log for details."));
+                    result = false;
+                    errorMessage = "Systemnode broadcast rejected by local validation. See debug.log for details.";
                 }
             } else {
                 failed++;
+            }
+
+            statusObj.push_back(Pair("result", result ? "successful" : "failed"));
+            if (!result) {
                 statusObj.push_back(Pair("errorMessage", errorMessage));
             }
 

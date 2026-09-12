@@ -119,7 +119,7 @@ Actual runtime path for `systemnode start-alias`:
 1. RPC entry in `src/rpcsystemnode.cpp:192-249`
 2. broadcast construction in `CSystemnodeBroadcast::Create(...)` at `src/systemnode.cpp:727-823`
 3. `sigTime` assignment during signing in `CSystemnodeBroadcast::Sign(...)` at `src/systemnode.cpp:825-842`
-4. local validation/insertion path through `CSystemnodeMan::CheckSnbAndUpdateSystemnodeList(...)` at `src/systemnodeman.cpp:217-264` (**post-fix**) instead of direct insertion
+4. local validation/insertion path through `CSystemnodeMan::CheckSnbAndUpdateSystemnodeList(...)` at `src/systemnodeman.cpp:217-264` for the affected RPC / Qt start flows (**post-fix**) instead of direct insertion
 5. peer P2P handling in `CSystemnodeMan::ProcessMessage("snb")` at `src/systemnodeman.cpp:96-118`
 6. peer signature/update validation in `CSystemnodeBroadcast::CheckAndUpdate(...)` at `src/systemnode.cpp:421-570`
 7. collateral, duplicate-IP, maturity, and collateral-time validation in `CSystemnodeBroadcast::CheckInputsAndAdd(...)` at `src/systemnode.cpp:572-672`
@@ -170,7 +170,7 @@ The fix does **not** weaken or remove this rule.
 
 ROOT CAUSE:
 
-- local systemnode registration paths mutated local state before running the same full acceptance path that peers run; specifically, `UpdateSystemnodeList()` was used directly by start paths instead of `CheckSnbAndUpdateSystemnodeList()`
+- the affected local Systemnode start flows mutated local state before running the same full acceptance path that peers run; specifically, `UpdateSystemnodeList()` was used directly by `start-alias` / `start-many` style registration flows instead of `CheckSnbAndUpdateSystemnodeList()`
 
 TRIGGER:
 
@@ -239,11 +239,9 @@ No serialized fields, collateral rules, wallet formats, or payment values were c
 
 Production changes:
 
-- `src/rpcsystemnode.cpp:227-239,339-358`
+- `src/rpcsystemnode.cpp:227-239,339-359`
   - `start-alias` and `start-many/start-all/start-missing/start-disabled` now call `snodeman.CheckSnbAndUpdateSystemnodeList(...)`
   - local RPC returns `failed` if the broadcast is rejected by the same full validation path peers use
-- `src/activesystemnode.cpp:127-145`
-  - hot/cold activation now requires local acceptance through `CheckSnbAndUpdateSystemnodeList(...)`
 - `src/qt/systemnodelist.cpp:121-132,160-173`
   - Qt start flows now use the same local validation path before reporting success
 
@@ -420,7 +418,6 @@ No new independent blocker appeared during this limited follow-through.
 Files changed for the fix:
 
 - `src/rpcsystemnode.cpp`
-- `src/activesystemnode.cpp`
 - `src/qt/systemnodelist.cpp`
 - `qa/rpc-tests/systemnode_registration_divergence.sh`
 - `qa/pull-tester/rpc-tests.sh`
@@ -467,4 +464,4 @@ EXACT PHASE 1E REPRO NO LONGER DIVERGES: **YES**
 
 ROOT CAUSE:
 
-- local Systemnode registration paths inserted broadcasts into the origin node's list before running the same `CheckSnbAndUpdateSystemnodeList(...)` / `CheckInputsAndAdd(...)` validation path that peers use, so an early `sigTime` could create an origin-only entry while peers correctly rejected it against the existing collateral-confirmation-time rule.
+- the affected local Systemnode start flows inserted broadcasts into the origin node's list before running the same `CheckSnbAndUpdateSystemnodeList(...)` / `CheckInputsAndAdd(...)` validation path that peers use, so an early `sigTime` could create an origin-only entry while peers correctly rejected it against the existing collateral-confirmation-time rule.
