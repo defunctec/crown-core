@@ -52,7 +52,7 @@ assert_mainnet_config_only "$DATADIR"
 assert_rpc_not_ready "$DATADIR"
 
 if [ -z "$OUTDIR" ]; then
-  OUTDIR="$DATADIR/phase2-offline-output"
+  OUTDIR="$(dirname "$DATADIR")/$(basename "$DATADIR").phase2-offline-output"
 fi
 OUTDIR="$(abs_path "$OUTDIR")"
 mkdir -p "$OUTDIR"

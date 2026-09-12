@@ -121,7 +121,32 @@ wait_rpc_ready() {
 
 stop_crownd() {
   local datadir="$1"
-  "$CROWNCLI_BIN" -datadir="$datadir" -rpcconnect=127.0.0.1 -rpcport="$(phase2_rpc_port "$datadir")" stop >/dev/null 2>&1 || true
+  local port pid waited
+  port="$(phase2_rpc_port "$datadir")"
+  pid=""
+  if [ -f "$datadir/crownd.phase2.pid" ]; then
+    pid="$(tr -cd '0-9' < "$datadir/crownd.phase2.pid" || true)"
+  fi
+
+  "$CROWNCLI_BIN" -datadir="$datadir" -rpcconnect=127.0.0.1 -rpcport="$port" stop >/dev/null 2>&1 || true
+
+  waited=0
+  while [ "$waited" -lt 120 ]; do
+    local pid_alive=0 rpc_alive=1
+    if [ -n "$pid" ] && kill -0 "$pid" >/dev/null 2>&1; then
+      pid_alive=1
+    fi
+    if "$CROWNCLI_BIN" -datadir="$datadir" -rpcconnect=127.0.0.1 -rpcport="$port" getblockcount >/dev/null 2>&1; then
+      rpc_alive=1
+    else
+      rpc_alive=0
+    fi
+    if [ "$pid_alive" -eq 0 ] && [ "$rpc_alive" -eq 0 ]; then
+      break
+    fi
+    sleep 1
+    waited=$((waited + 1))
+  done
 }
 
 rpc() {

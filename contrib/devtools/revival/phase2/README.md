@@ -24,6 +24,7 @@ This tooling is for local execution when `crown-old-chain.7z` is not available i
 
 Both runtime scripts reject datadirs whose `crown.conf` explicitly enables non-mainnet mode (`testnet=1`, `regtest=1`, or non-zero `devnet`).
 Both runtime scripts also require the `phase2-working-copy.json` marker written by `phase2-prepare-working-copies.sh`.
+When `--outdir` is omitted, each runtime script writes to a sibling directory outside the datadir.
 
 ## Windows support
 
