@@ -27,6 +27,46 @@ require_bins() {
   [ -x "$CROWNCLI_BIN" ] || die "crown-cli not found/executable at: $CROWNCLI_BIN"
 }
 
+phase2_rpc_user_file() {
+  local datadir="$1"
+  printf '%s\n' "$datadir/phase2-rpc-user"
+}
+
+phase2_rpc_password_file() {
+  local datadir="$1"
+  printf '%s\n' "$datadir/phase2-rpc-password"
+}
+
+ensure_phase2_rpc_credentials() {
+  local datadir="$1"
+  local user_file pass_file
+  user_file="$(phase2_rpc_user_file "$datadir")"
+  pass_file="$(phase2_rpc_password_file "$datadir")"
+
+  if [ ! -s "$user_file" ]; then
+    printf '%s\n' "phase2rpc" > "$user_file"
+  fi
+  if [ ! -s "$pass_file" ]; then
+    python3 - <<'PY' > "$pass_file"
+import secrets
+print(secrets.token_hex(16))
+PY
+  fi
+  chmod 600 "$user_file" "$pass_file" >/dev/null 2>&1 || true
+}
+
+phase2_rpc_user() {
+  local datadir="$1"
+  ensure_phase2_rpc_credentials "$datadir"
+  tr -d '\r\n' < "$(phase2_rpc_user_file "$datadir")"
+}
+
+phase2_rpc_password() {
+  local datadir="$1"
+  ensure_phase2_rpc_credentials "$datadir"
+  tr -d '\r\n' < "$(phase2_rpc_password_file "$datadir")"
+}
+
 abs_path() {
   python3 - "$1" <<'PY'
 import os,sys
@@ -98,11 +138,13 @@ PY
 start_crownd() {
   local datadir="$1"
   shift
-  local rpc_port started=0
+  local rpc_port started=0 rpc_user rpc_password
+  rpc_user="$(phase2_rpc_user "$datadir")"
+  rpc_password="$(phase2_rpc_password "$datadir")"
   rm -f "$datadir/phase2-rpc-port"
   while IFS= read -r rpc_port; do
     [ -n "$rpc_port" ] || continue
-    if "$CROWND_BIN" -datadir="$datadir" -server=1 -daemon=1 -pid="$datadir/crownd.phase2.pid" -rpcport="$rpc_port" "$@" >/dev/null 2>&1; then
+    if "$CROWND_BIN" -datadir="$datadir" -server=1 -daemon=1 -pid="$datadir/crownd.phase2.pid" -rpcport="$rpc_port" -rpcuser="$rpc_user" -rpcpassword="$rpc_password" "$@" >/dev/null 2>&1; then
       printf '%s\n' "$rpc_port" > "$datadir/phase2-rpc-port"
       started=1
       break
@@ -115,9 +157,11 @@ start_crownd() {
 wait_rpc_ready() {
   local datadir="$1"
   local max_wait="${2:-180}"
-  local waited=0
+  local waited=0 rpc_user rpc_password
+  rpc_user="$(phase2_rpc_user "$datadir")"
+  rpc_password="$(phase2_rpc_password "$datadir")"
   while [ "$waited" -lt "$max_wait" ]; do
-    if "$CROWNCLI_BIN" -datadir="$datadir" -rpcconnect=127.0.0.1 -rpcport="$(phase2_rpc_port "$datadir")" getblockcount >/dev/null 2>&1; then
+    if "$CROWNCLI_BIN" -datadir="$datadir" -rpcconnect=127.0.0.1 -rpcport="$(phase2_rpc_port "$datadir")" -rpcuser="$rpc_user" -rpcpassword="$rpc_password" getblockcount >/dev/null 2>&1; then
       return 0
     fi
     sleep 2
@@ -128,14 +172,16 @@ wait_rpc_ready() {
 
 stop_crownd() {
   local datadir="$1"
-  local port pid waited
+  local port pid waited rpc_user rpc_password
   port="$(phase2_rpc_port "$datadir")"
+  rpc_user="$(phase2_rpc_user "$datadir")"
+  rpc_password="$(phase2_rpc_password "$datadir")"
   pid=""
   if [ -f "$datadir/crownd.phase2.pid" ]; then
     pid="$(tr -cd '0-9' < "$datadir/crownd.phase2.pid" || true)"
   fi
 
-  "$CROWNCLI_BIN" -datadir="$datadir" -rpcconnect=127.0.0.1 -rpcport="$port" stop >/dev/null 2>&1 || true
+  "$CROWNCLI_BIN" -datadir="$datadir" -rpcconnect=127.0.0.1 -rpcport="$port" -rpcuser="$rpc_user" -rpcpassword="$rpc_password" stop >/dev/null 2>&1 || true
 
   waited=0
   while [ "$waited" -lt 120 ]; do
@@ -143,7 +189,7 @@ stop_crownd() {
     if [ -n "$pid" ] && kill -0 "$pid" >/dev/null 2>&1; then
       pid_alive=1
     fi
-    if "$CROWNCLI_BIN" -datadir="$datadir" -rpcconnect=127.0.0.1 -rpcport="$port" getblockcount >/dev/null 2>&1; then
+    if "$CROWNCLI_BIN" -datadir="$datadir" -rpcconnect=127.0.0.1 -rpcport="$port" -rpcuser="$rpc_user" -rpcpassword="$rpc_password" getblockcount >/dev/null 2>&1; then
       rpc_alive=1
     else
       rpc_alive=0
@@ -160,7 +206,7 @@ stop_crownd() {
 rpc() {
   local datadir="$1"
   shift
-  "$CROWNCLI_BIN" -datadir="$datadir" -rpcconnect=127.0.0.1 -rpcport="$(phase2_rpc_port "$datadir")" "$@"
+  "$CROWNCLI_BIN" -datadir="$datadir" -rpcconnect=127.0.0.1 -rpcport="$(phase2_rpc_port "$datadir")" -rpcuser="$(phase2_rpc_user "$datadir")" -rpcpassword="$(phase2_rpc_password "$datadir")" "$@"
 }
 
 assert_rpc_not_ready() {

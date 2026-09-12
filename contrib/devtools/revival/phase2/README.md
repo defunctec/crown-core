@@ -25,6 +25,7 @@ This tooling is for local execution when `crown-old-chain.7z` is not available i
 
 Both runtime scripts reject datadirs whose `crown.conf` contains explicit chain-selection settings (`testnet=...`, `regtest=...`, `devnet=...`, `chain=...`, or network section headers).
 Both runtime scripts also require the `phase2-working-copy.json` marker written by `phase2-prepare-working-copies.sh`.
+Both runtime scripts auto-provision disposable local RPC credentials (`phase2-rpc-user` / `phase2-rpc-password`) in the working copy when missing, so startup does not depend on pre-existing `rpcpassword` in `crown.conf`.
 When `--outdir` is omitted, each runtime script writes to a sibling directory outside the datadir.
 
 ## Windows support
