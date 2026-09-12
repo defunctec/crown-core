@@ -199,12 +199,15 @@ start_crownd() {
 wait_rpc_ready() {
   local datadir="$1"
   local max_wait="${2:-180}"
-  local waited=0 rpc_user rpc_password pid
+  local waited=0 rpc_user rpc_password pid seen_process launch_grace
   rpc_user="$(phase2_rpc_user "$datadir")"
   rpc_password="$(phase2_rpc_password "$datadir")"
   pid=""
+  seen_process=0
+  launch_grace=15
   if [ -f "$datadir/crownd.phase2.pid" ]; then
     pid="$(tr -cd '0-9' < "$datadir/crownd.phase2.pid" || true)"
+    [ -n "$pid" ] && seen_process=1
   fi
   while [ "$waited" -lt "$max_wait" ]; do
     if "$CROWNCLI_BIN" -datadir="$datadir" -rpcconnect=127.0.0.1 -rpcport="$(phase2_rpc_port "$datadir")" -rpcuser="$rpc_user" -rpcpassword="$rpc_password" getblockcount >/dev/null 2>&1; then
@@ -215,7 +218,17 @@ wait_rpc_ready() {
         pid="$(tr -cd '0-9' < "$datadir/crownd.phase2.pid" || true)"
       fi
       if [ -z "$pid" ]; then
-        pid="$(phase2_find_crownd_pid_for_datadir "$datadir" || true)"
+        local probe_pid
+        probe_pid="$(phase2_find_crownd_pid_for_datadir "$datadir" || true)"
+        if [ -n "$probe_pid" ]; then
+          pid="$probe_pid"
+        fi
+      fi
+      if [ -n "$pid" ]; then
+        seen_process=1
+      elif [ "$seen_process" -eq 1 ] || [ "$waited" -ge "$launch_grace" ]; then
+        log "crownd process for datadir not found before RPC became ready (waited=${waited}s, datadir=$datadir)"
+        return 1
       fi
     fi
     if [ -n "$pid" ] && ! kill -0 "$pid" >/dev/null 2>&1; then
