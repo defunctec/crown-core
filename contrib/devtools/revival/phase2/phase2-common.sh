@@ -160,10 +160,8 @@ start_crownd() {
           break
         fi
         if "$CROWNCLI_BIN" -datadir="$datadir" -rpcconnect=127.0.0.1 -rpcport="$rpc_port" -rpcuser="$rpc_user" -rpcpassword="$rpc_password" getblockcount >/dev/null 2>&1; then
-          if [ -n "$pid" ] && kill -0 "$pid" >/dev/null 2>&1; then
-            ready=1
-            break
-          fi
+          ready=1
+          break
         fi
         sleep 1
         waited=$((waited + 1))
@@ -225,14 +223,14 @@ stop_crownd() {
 
   waited=0
   while [ "$waited" -lt 120 ]; do
-    local pid_alive=0 rpc_alive=1
+    local pid_alive=0 rpc_alive=0
     if [ -n "$pid" ] && kill -0 "$pid" >/dev/null 2>&1; then
       pid_alive=1
     fi
-    if "$CROWNCLI_BIN" -datadir="$datadir" -rpcconnect=127.0.0.1 -rpcport="$port" -rpcuser="$rpc_user" -rpcpassword="$rpc_password" getblockcount >/dev/null 2>&1; then
-      rpc_alive=1
-    else
-      rpc_alive=0
+    if [ "$port_from_file" -eq 1 ]; then
+      if "$CROWNCLI_BIN" -datadir="$datadir" -rpcconnect=127.0.0.1 -rpcport="$port" -rpcuser="$rpc_user" -rpcpassword="$rpc_password" getblockcount >/dev/null 2>&1; then
+        rpc_alive=1
+      fi
     fi
     if [ "$pid_alive" -eq 0 ] && [ "$rpc_alive" -eq 0 ]; then
       break

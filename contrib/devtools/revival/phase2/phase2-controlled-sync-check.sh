@@ -78,7 +78,8 @@ wait_rpc_ready "$DATADIR" 300 || die "crownd RPC did not become ready for contro
 rpc "$DATADIR" getblockchaininfo > "$OUTDIR/start-blockchaininfo.json"
 CHAIN_NAME="$(python3 - "$OUTDIR/start-blockchaininfo.json" <<'PY'
 import json,sys
-print(json.load(open(sys.argv[1])).get("chain",""))
+with open(sys.argv[1], encoding='utf-8') as f:
+    print(json.load(f).get("chain",""))
 PY
 )"
 [ "$CHAIN_NAME" = "main" ] || die "Expected mainnet chain, got: ${CHAIN_NAME:-UNKNOWN}"

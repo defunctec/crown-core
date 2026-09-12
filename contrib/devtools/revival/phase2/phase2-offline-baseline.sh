@@ -83,7 +83,8 @@ VERIFYCHAIN_RESULT="UNKNOWN"
 if rpc "$DATADIR" verifychain 4 288 > "$OUTDIR/verifychain.json" 2>/dev/null; then
   VERIFYCHAIN_RESULT="$(python3 - "$OUTDIR/verifychain.json" <<'PY'
 import json,sys
-v=json.load(open(sys.argv[1]))
+with open(sys.argv[1], encoding='utf-8') as f:
+    v=json.load(f)
 if v is True:
     print('true')
 elif v is False:
