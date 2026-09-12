@@ -17,10 +17,11 @@ This tooling is for local execution when `crown-old-chain.7z` is not available i
   - Verifies archive SHA256 (optional, recommended) and creates OFFLINE/SYNC disposable copies from an extracted source directory.
   - Recreates destination copy directories each run to avoid stale node state.
   - Refuses to delete non-empty destinations unless they were previously created by this tooling.
+  - Preserves hard links while copying block/chainstate data.
 - `phase2-offline-baseline.sh`
   - Starts `crownd` with networking disabled, loopback-only RPC binding, and exports baseline JSON artifacts.
 - `phase2-controlled-sync-check.sh`
-  - Starts `crownd` in explicit mainnet mode with loopback-only RPC binding and inbound-disabled peer settings (`listen=0`, `upnp=0`), while allowing outbound peer discovery for continuation checks.
+  - Starts `crownd` in explicit mainnet mode with loopback-only RPC binding and inbound-disabled peer settings (`listen=0`, `upnp=0`), with outbound peer discovery explicitly enabled (`discover=1`, `dnsseed=1`).
 
 Both runtime scripts reject datadirs whose `crown.conf` explicitly enables non-mainnet mode (`testnet=1`, `regtest=1`, or non-zero `devnet`).
 Both runtime scripts also require the `phase2-working-copy.json` marker written by `phase2-prepare-working-copies.sh`.

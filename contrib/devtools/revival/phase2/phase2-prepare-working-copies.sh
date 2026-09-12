@@ -101,8 +101,8 @@ copy_chain_dirs() {
   assert_safe_disposable_destination "$dst"
   rm -rf "$dst"
   mkdir -p "$dst"
-  cp -a "$src/blocks" "$dst/blocks"
-  cp -a "$src/chainstate" "$dst/chainstate"
+  cp -a --preserve=links "$src/blocks" "$dst/blocks"
+  cp -a --preserve=links "$src/chainstate" "$dst/chainstate"
 
   python3 - "$src" "$dst" "$label" <<'PY'
 import datetime, json, os, sys

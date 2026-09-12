@@ -252,6 +252,10 @@ base = int(sys.argv[2])
 span = int(sys.argv[3])
 if span < 1:
     raise SystemExit("PHASE2_RPC_PORT_SPAN must be >= 1")
+if base < 1024 or base > 65535:
+    raise SystemExit("PHASE2_RPC_PORT_BASE must be between 1024 and 65535")
+if base + span - 1 > 65535:
+    raise SystemExit("PHASE2 RPC port range exceeds 65535")
 h = int(hashlib.sha256(path).hexdigest()[:8], 16)
 start = base + (h % span)
 for i in range(span):
