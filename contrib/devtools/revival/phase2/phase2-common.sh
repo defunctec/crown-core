@@ -87,7 +87,8 @@ start_crownd() {
   local datadir="$1"
   shift
   local rpc_port
-  rpc_port="$(phase2_rpc_port "$datadir")"
+  rpc_port="$(phase2_select_rpc_port "$datadir")"
+  printf '%s\n' "$rpc_port" > "$datadir/phase2-rpc-port"
   "$CROWND_BIN" -datadir="$datadir" -server=1 -daemon=1 -pid="$datadir/crownd.phase2.pid" -rpcport="$rpc_port" "$@" >/dev/null
 }
 
@@ -119,9 +120,6 @@ rpc() {
 assert_rpc_not_ready() {
   local datadir="$1"
   assert_no_crownd_for_datadir "$datadir"
-  if "$CROWNCLI_BIN" -datadir="$datadir" -rpcconnect=127.0.0.1 -rpcport="$(phase2_rpc_port "$datadir")" getblockcount >/dev/null 2>&1; then
-    die "A crownd instance appears to be running already for datadir: $datadir"
-  fi
 }
 
 assert_no_crownd_for_datadir() {
@@ -181,6 +179,19 @@ phase2_rpc_port() {
     printf '%s\n' "$PHASE2_RPC_PORT"
     return 0
   fi
+  if [ -f "$datadir/phase2-rpc-port" ]; then
+    local file_port
+    file_port="$(tr -cd '0-9' < "$datadir/phase2-rpc-port" || true)"
+    if [ -n "$file_port" ]; then
+      printf '%s\n' "$file_port"
+      return 0
+    fi
+  fi
+  phase2_default_rpc_port "$datadir"
+}
+
+phase2_default_rpc_port() {
+  local datadir="$1"
   python3 - "$datadir" "$PHASE2_RPC_PORT_BASE" "$PHASE2_RPC_PORT_SPAN" <<'PY'
 import hashlib, os, sys
 path = os.path.realpath(sys.argv[1]).encode("utf-8")
@@ -190,6 +201,36 @@ if span < 1:
     raise SystemExit("PHASE2_RPC_PORT_SPAN must be >= 1")
 h = int(hashlib.sha256(path).hexdigest()[:8], 16)
 print(base + (h % span))
+PY
+}
+
+phase2_select_rpc_port() {
+  local datadir="$1"
+  if [ -n "${PHASE2_RPC_PORT:-}" ]; then
+    printf '%s\n' "$PHASE2_RPC_PORT"
+    return 0
+  fi
+  python3 - "$datadir" "$PHASE2_RPC_PORT_BASE" "$PHASE2_RPC_PORT_SPAN" <<'PY'
+import hashlib, os, socket, sys
+path = os.path.realpath(sys.argv[1]).encode("utf-8")
+base = int(sys.argv[2])
+span = int(sys.argv[3])
+if span < 1:
+    raise SystemExit("PHASE2_RPC_PORT_SPAN must be >= 1")
+h = int(hashlib.sha256(path).hexdigest()[:8], 16)
+start = base + (h % span)
+for i in range(span):
+    port = base + ((start - base + i) % span)
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.settimeout(0.15)
+    try:
+        in_use = s.connect_ex(("127.0.0.1", port)) == 0
+    finally:
+        s.close()
+    if not in_use:
+        print(port)
+        raise SystemExit(0)
+raise SystemExit(f"No free RPC port in range {base}-{base+span-1}")
 PY
 }
 
