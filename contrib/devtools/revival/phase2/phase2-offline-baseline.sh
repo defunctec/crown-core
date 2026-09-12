@@ -122,13 +122,16 @@ for cp in exp.get("checkpoints", []):
 json.dump({"to_check": results}, open(f"{outdir}/checkpoint-plan.json","w"), indent=2)
 PY
 
-python3 - "$CROWNCLI_BIN" "$DATADIR" "$OUTDIR/checkpoint-plan.json" "$CHECKPOINT_RESULT_JSON" <<'PY'
+python3 - "$CROWNCLI_BIN" "$DATADIR" "$(phase2_rpc_port "$DATADIR")" "$(phase2_rpc_user "$DATADIR")" "$(phase2_rpc_password "$DATADIR")" "$OUTDIR/checkpoint-plan.json" "$CHECKPOINT_RESULT_JSON" <<'PY'
 import json,subprocess,sys
 
 crowncli=sys.argv[1]
 datadir=sys.argv[2]
-plan=json.load(open(sys.argv[3]))
-out_path=sys.argv[4]
+rpc_port=sys.argv[3]
+rpc_user=sys.argv[4]
+rpc_password=sys.argv[5]
+plan=json.load(open(sys.argv[6]))
+out_path=sys.argv[7]
 
 checks=[]
 for item in plan.get('to_check', []):
@@ -136,7 +139,16 @@ for item in plan.get('to_check', []):
     expected=item['expected_hash'].lower()
     try:
         observed=subprocess.check_output(
-            [crowncli, f'-datadir={datadir}', 'getblockhash', str(h)],
+            [
+                crowncli,
+                f'-datadir={datadir}',
+                '-rpcconnect=127.0.0.1',
+                f'-rpcport={rpc_port}',
+                f'-rpcuser={rpc_user}',
+                f'-rpcpassword={rpc_password}',
+                'getblockhash',
+                str(h),
+            ],
             text=True
         ).strip().lower()
         checks.append({

@@ -145,9 +145,34 @@ start_crownd() {
   while IFS= read -r rpc_port; do
     [ -n "$rpc_port" ] || continue
     if "$CROWND_BIN" -datadir="$datadir" -server=1 -daemon=1 -pid="$datadir/crownd.phase2.pid" -rpcport="$rpc_port" -rpcuser="$rpc_user" -rpcpassword="$rpc_password" "$@" >/dev/null 2>&1; then
-      printf '%s\n' "$rpc_port" > "$datadir/phase2-rpc-port"
-      started=1
-      break
+      local pid ready waited
+      pid=""
+      if [ -f "$datadir/crownd.phase2.pid" ]; then
+        pid="$(tr -cd '0-9' < "$datadir/crownd.phase2.pid" || true)"
+      fi
+      ready=0
+      waited=0
+      while [ "$waited" -lt 10 ]; do
+        if [ -n "$pid" ] && ! kill -0 "$pid" >/dev/null 2>&1; then
+          break
+        fi
+        if "$CROWNCLI_BIN" -datadir="$datadir" -rpcconnect=127.0.0.1 -rpcport="$rpc_port" -rpcuser="$rpc_user" -rpcpassword="$rpc_password" getblockcount >/dev/null 2>&1; then
+          ready=1
+          break
+        fi
+        sleep 1
+        waited=$((waited + 1))
+      done
+      if [ "$ready" -eq 1 ]; then
+        printf '%s\n' "$rpc_port" > "$datadir/phase2-rpc-port"
+        started=1
+        break
+      fi
+      "$CROWNCLI_BIN" -datadir="$datadir" -rpcconnect=127.0.0.1 -rpcport="$rpc_port" -rpcuser="$rpc_user" -rpcpassword="$rpc_password" stop >/dev/null 2>&1 || true
+      if [ -n "$pid" ]; then
+        kill "$pid" >/dev/null 2>&1 || true
+      fi
+      rm -f "$datadir/crownd.phase2.pid"
     fi
   done < <(phase2_rpc_port_candidates "$datadir")
 
@@ -235,7 +260,7 @@ import re,sys
 print(re.escape(sys.argv[1]))
 PY
 )"
-      if pgrep -f "crownd(.+)?-datadir(=| )${escaped}([[:space:]]|$)" >/dev/null 2>&1; then
+      if pgrep -f "crownd(.+)?-datadir(=| )${escaped}" >/dev/null 2>&1; then
         die "A crownd process with matching -datadir is already running: $datadir"
       fi
     else
