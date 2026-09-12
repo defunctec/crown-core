@@ -108,8 +108,8 @@ copy_chain_dirs() {
   fi
   mkdir -p "$dst"
   mkdir -p "$dst/blocks" "$dst/chainstate"
-  cp -a --no-preserve=links "$src/blocks/." "$dst/blocks/"
-  cp -a --no-preserve=links "$src/chainstate/." "$dst/chainstate/"
+  cp -Rp "$src/blocks/." "$dst/blocks/"
+  cp -Rp "$src/chainstate/." "$dst/chainstate/"
   assert_no_source_hardlinks "$src" "$dst"
 
   python3 - "$src" "$dst" "$label" <<'PY'

@@ -169,8 +169,13 @@ print('1' if isinstance(h,int) and isinstance(b,int) and h == b else '0')
 PY
 )"
 
-  if [ "$ELAPSED" -ge "$MIN_RUNTIME_SECONDS" ] && [ "$STAGNANT" -ge "$STAGNATION_POLLS" ] && [ "$HEADERS_EQ_BLOCKS" = "1" ] && [ "$SEEN_PEER" -eq 1 ]; then
-    break
+  if [ "$ELAPSED" -ge "$MIN_RUNTIME_SECONDS" ] && [ "$SEEN_PEER" -eq 1 ]; then
+    if [ "$CUR_HEIGHT" -gt "$START_HEIGHT" ] || [ "$CUR_HASH" != "$START_HASH" ]; then
+      break
+    fi
+    if [ "$STAGNANT" -ge "$STAGNATION_POLLS" ] && [ "$HEADERS_EQ_BLOCKS" = "1" ]; then
+      break
+    fi
   fi
 
   if [ "$ELAPSED" -ge "$MAX_RUNTIME_SECONDS" ]; then
@@ -271,16 +276,7 @@ final_headers = final_bci.get('headers') if isinstance(final_bci.get('headers'),
 newer_blocks_exist = (
     final_height > start_height
     or (start_headers is not None and final_headers is not None and final_headers > start_headers)
-    or (
-        initial_max_peer_synced_headers is not None
-        and max_peer_synced_headers is not None
-        and max_peer_synced_headers > initial_max_peer_synced_headers
-    )
-    or (
-        initial_max_peer_synced_blocks is not None
-        and max_peer_synced_blocks is not None
-        and max_peer_synced_blocks > initial_max_peer_synced_blocks
-    )
+    or (final_height == start_height and final_hash != start_hash)
 )
 headers_blocks_equal = final_bci.get('headers') == final_bci.get('blocks')
 active_tip_entries=[x for x in chaintips if x.get('status')=='active'] if isinstance(chaintips,list) else []
