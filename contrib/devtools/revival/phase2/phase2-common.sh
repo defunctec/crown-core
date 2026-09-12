@@ -87,13 +87,26 @@ expected_mainnet_params_json() {
 import json,re,sys
 text=open(sys.argv[1], encoding='utf-8').read()
 
-start = text.find('strNetworkID = "main";')
-if start < 0:
-    raise SystemExit('failed to locate mainnet parameter section')
-end = text.find('class CTestNetParams', start)
-if end < 0:
-    end = len(text)
-body = text[start:end]
+ctor_pos = text.find('CMainParams()')
+if ctor_pos < 0:
+    raise SystemExit('failed to locate CMainParams constructor')
+brace_start = text.find('{', ctor_pos)
+if brace_start < 0:
+    raise SystemExit('failed to locate CMainParams constructor opening brace')
+depth = 0
+brace_end = -1
+for i in range(brace_start, len(text)):
+    ch = text[i]
+    if ch == '{':
+        depth += 1
+    elif ch == '}':
+        depth -= 1
+        if depth == 0:
+            brace_end = i
+            break
+if brace_end < 0:
+    raise SystemExit('failed to locate CMainParams constructor closing brace')
+body = text[brace_start:brace_end+1]
 
 magic = []
 for i in range(4):
@@ -171,7 +184,8 @@ if indices:
 pruned_status='UNKNOWN'
 rationale=[]
 if not blk:
-    rationale.append('No blk*.dat files found.')
+    pruned_status='YES'
+    rationale.append('No blk*.dat files found; historical block files are absent from this working copy.')
 elif indices[0] > 0:
     pruned_status='YES'
     rationale.append('First blk file index is greater than zero, indicating earlier files are absent.')
