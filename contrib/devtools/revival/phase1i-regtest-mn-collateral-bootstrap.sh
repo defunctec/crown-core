@@ -798,22 +798,36 @@ else
 fi
 
 quiesce_stakers_with_past_mocktime
-STATIONARY_HEIGHT_A="$(rpc "$ROOT" ctl getblockcount)"
-STATIONARY_HASH_A="$(rpc "$ROOT" ctl getbestblockhash)"
+declare -A STATIONARY_HEIGHT_A STATIONARY_HASH_A STATIONARY_HEIGHT_MID STATIONARY_HASH_MID STATIONARY_HEIGHT_B STATIONARY_HASH_B
+for n in ctl mn1 sn1; do
+  STATIONARY_HEIGHT_A["$n"]="$(rpc "$ROOT" "$n" getblockcount)"
+  STATIONARY_HASH_A["$n"]="$(rpc "$ROOT" "$n" getbestblockhash)"
+done
 sleep "$FINAL_CONVERGENCE_POLL_SECS"
-STATIONARY_HEIGHT_MID="$(rpc "$ROOT" ctl getblockcount)"
-STATIONARY_HASH_MID="$(rpc "$ROOT" ctl getbestblockhash)"
+for n in ctl mn1 sn1; do
+  STATIONARY_HEIGHT_MID["$n"]="$(rpc "$ROOT" "$n" getblockcount)"
+  STATIONARY_HASH_MID["$n"]="$(rpc "$ROOT" "$n" getbestblockhash)"
+done
 sleep "$FINAL_CONVERGENCE_POLL_SECS"
-STATIONARY_HEIGHT_B="$(rpc "$ROOT" ctl getblockcount)"
-STATIONARY_HASH_B="$(rpc "$ROOT" ctl getbestblockhash)"
-if [ "$STATIONARY_HEIGHT_A" != "$STATIONARY_HEIGHT_MID" ] || [ "$STATIONARY_HASH_A" != "$STATIONARY_HASH_MID" ] || [ "$STATIONARY_HEIGHT_MID" != "$STATIONARY_HEIGHT_B" ] || [ "$STATIONARY_HASH_MID" != "$STATIONARY_HASH_B" ]; then
-  stage_fail "STAGE 10 — reward/accounting checks" "STAKING QUIESCE FAILED: ctl tip advanced while quiescing; start=${STATIONARY_HEIGHT_A}/${STATIONARY_HASH_A} mid=${STATIONARY_HEIGHT_MID}/${STATIONARY_HASH_MID} end=${STATIONARY_HEIGHT_B}/${STATIONARY_HASH_B}"
-  capture_checkpoint "final_stationary_target_advanced"
+for n in ctl mn1 sn1; do
+  STATIONARY_HEIGHT_B["$n"]="$(rpc "$ROOT" "$n" getblockcount)"
+  STATIONARY_HASH_B["$n"]="$(rpc "$ROOT" "$n" getbestblockhash)"
+done
+for n in ctl mn1 sn1; do
+  if [ "${STATIONARY_HEIGHT_A[$n]}" != "${STATIONARY_HEIGHT_MID[$n]}" ] || [ "${STATIONARY_HASH_A[$n]}" != "${STATIONARY_HASH_MID[$n]}" ] || [ "${STATIONARY_HEIGHT_MID[$n]}" != "${STATIONARY_HEIGHT_B[$n]}" ] || [ "${STATIONARY_HASH_MID[$n]}" != "${STATIONARY_HASH_B[$n]}" ]; then
+    stage_fail "STAGE 10 — reward/accounting checks" "STAKING QUIESCE FAILED: node=$n tip advanced while quiescing; start=${STATIONARY_HEIGHT_A[$n]}/${STATIONARY_HASH_A[$n]} mid=${STATIONARY_HEIGHT_MID[$n]}/${STATIONARY_HASH_MID[$n]} end=${STATIONARY_HEIGHT_B[$n]}/${STATIONARY_HASH_B[$n]}"
+    capture_checkpoint "final_stationary_target_advanced"
+    exit 1
+  fi
+done
+if [ "${STATIONARY_HEIGHT_B[ctl]}" != "${STATIONARY_HEIGHT_B[mn1]}" ] || [ "${STATIONARY_HASH_B[ctl]}" != "${STATIONARY_HASH_B[mn1]}" ] || [ "${STATIONARY_HEIGHT_B[ctl]}" != "${STATIONARY_HEIGHT_B[sn1]}" ] || [ "${STATIONARY_HASH_B[ctl]}" != "${STATIONARY_HASH_B[sn1]}" ]; then
+  stage_fail "STAGE 10 — reward/accounting checks" "STAKING QUIESCE FAILED: staking node tips differ after quiesce; ctl=${STATIONARY_HEIGHT_B[ctl]}/${STATIONARY_HASH_B[ctl]} mn1=${STATIONARY_HEIGHT_B[mn1]}/${STATIONARY_HASH_B[mn1]} sn1=${STATIONARY_HEIGHT_B[sn1]}/${STATIONARY_HASH_B[sn1]}"
+  capture_checkpoint "final_stationary_target_mismatch"
   exit 1
 fi
 
-FINAL_TARGET_HEIGHT="$STATIONARY_HEIGHT_B"
-FINAL_TARGET_HASH="$STATIONARY_HASH_B"
+FINAL_TARGET_HEIGHT="${STATIONARY_HEIGHT_B[ctl]}"
+FINAL_TARGET_HASH="${STATIONARY_HASH_B[ctl]}"
 printf '%s\n' "$FINAL_TARGET_HEIGHT" > "$ROOT/final.target.height.txt"
 printf '%s\n' "$FINAL_TARGET_HASH" > "$ROOT/final.target.hash.txt"
 echo "[$(ts)] fixed final target height=$FINAL_TARGET_HEIGHT hash=$FINAL_TARGET_HASH"
