@@ -72,7 +72,7 @@ cleanup() {
 trap cleanup EXIT
 
 log "Starting controlled sync check on disposable sync copy: $DATADIR"
-start_crownd "$DATADIR" -testnet=0 -regtest=0 -listen=0 -discover=1 -dnsseed=1 -upnp=0 -onlynet=ipv4 -bind=127.0.0.1 -rpcbind=127.0.0.1 -rpcallowip=127.0.0.1
+start_crownd "$DATADIR" -testnet=0 -regtest=0 -listen=0 -discover=1 -dnsseed=1 -upnp=0 -onlynet=ipv4 -rpcbind=127.0.0.1 -rpcallowip=127.0.0.1
 wait_rpc_ready "$DATADIR" 300 || die "crownd RPC did not become ready for controlled sync check"
 
 rpc "$DATADIR" getblockchaininfo > "$OUTDIR/start-blockchaininfo.json"
