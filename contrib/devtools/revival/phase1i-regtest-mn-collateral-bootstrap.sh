@@ -238,16 +238,22 @@ wait_fixed_tip_convergence() {
 }
 
 quiesce_stakers_with_past_mocktime() {
-  for n in ctl mn1 sn1; do
-    local tip_hash tip_time fixed_time
-    tip_hash="$(rpc "$ROOT" "$n" getbestblockhash)"
-    tip_time="$(rpc "$ROOT" "$n" getblock "$tip_hash" | python3 -c 'import json,sys; print(json.load(sys.stdin)["time"])')"
-    fixed_time=$((tip_time - 1))
-    if [ "$fixed_time" -le 0 ]; then
-      fixed_time=1
+  local pass
+  for pass in 1 2; do
+    for n in ctl mn1 sn1; do
+      local tip_hash tip_time fixed_time
+      tip_hash="$(rpc "$ROOT" "$n" getbestblockhash)"
+      tip_time="$(rpc "$ROOT" "$n" getblock "$tip_hash" | python3 -c 'import json,sys; print(json.load(sys.stdin)["time"])')"
+      fixed_time=$((tip_time - 1))
+      if [ "$fixed_time" -le 0 ]; then
+        fixed_time=1
+      fi
+      rpc "$ROOT" "$n" setmocktime "$fixed_time" >/dev/null
+      echo "[$(ts)] staking-quiesce pass=$pass node=$n tip_hash=$tip_hash tip_time=$tip_time fixed_mocktime=$fixed_time"
+    done
+    if [ "$pass" -eq 1 ]; then
+      sleep 1
     fi
-    rpc "$ROOT" "$n" setmocktime "$fixed_time" >/dev/null
-    echo "[$(ts)] staking-quiesce node=$n tip_hash=$tip_hash tip_time=$tip_time fixed_mocktime=$fixed_time"
   done
 }
 
