@@ -228,8 +228,12 @@ if (strCommand == "start-alias")
 
             statusObj.push_back(Pair("result", result ? "successful" : "failed"));
             if (result) {
-                snodeman.UpdateSystemnodeList(snb);
-                snb.Relay();
+                int nDoS = 0;
+                if (!snodeman.CheckSnbAndUpdateSystemnodeList(snb, nDoS)) {
+                    statusObj.pop_back();
+                    statusObj.push_back(Pair("result", "failed"));
+                    statusObj.push_back(Pair("errorMessage", "Systemnode broadcast rejected by local validation. See debug.log for details."));
+                }
             } else {
                 statusObj.push_back(Pair("errorMessage", errorMessage));
             }
@@ -339,9 +343,15 @@ if (strCommand == "start-alias")
             statusObj.push_back(Pair("result", result ? "successful" : "failed"));
 
             if (result) {
-                successful++;
-                snodeman.UpdateSystemnodeList(snb);
-                snb.Relay();
+                int nDoS = 0;
+                if (snodeman.CheckSnbAndUpdateSystemnodeList(snb, nDoS)) {
+                    successful++;
+                } else {
+                    failed++;
+                    statusObj.pop_back();
+                    statusObj.push_back(Pair("result", "failed"));
+                    statusObj.push_back(Pair("errorMessage", "Systemnode broadcast rejected by local validation. See debug.log for details."));
+                }
             } else {
                 failed++;
                 statusObj.push_back(Pair("errorMessage", errorMessage));

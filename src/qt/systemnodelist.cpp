@@ -121,9 +121,12 @@ void SystemnodeList::StartAlias(std::string strAlias)
             bool result = CSystemnodeBroadcast::Create(mne.getIp(), mne.getPrivKey(), mne.getTxHash(), mne.getOutputIndex(), errorMessage, mnb);
 
             if(result) {
-                statusObj += "<br>Successfully started systemnode." ;
-                snodeman.UpdateSystemnodeList(mnb);
-                mnb.Relay();
+                int nDoS = 0;
+                if (snodeman.CheckSnbAndUpdateSystemnodeList(mnb, nDoS)) {
+                    statusObj += "<br>Successfully started systemnode." ;
+                } else {
+                    statusObj += "<br>Failed to start systemnode.<br>Error: Systemnode broadcast rejected by local validation. See debug.log for details.";
+                }
             } else {
                 statusObj += "<br>Failed to start systemnode.<br>Error: " + errorMessage;
             }
@@ -157,9 +160,13 @@ void SystemnodeList::StartAll(std::string strCommand)
         bool result = CSystemnodeBroadcast::Create(mne.getIp(), mne.getPrivKey(), mne.getTxHash(), mne.getOutputIndex(), errorMessage, mnb);
 
         if(result) {
-            successful++;
-            snodeman.UpdateSystemnodeList(mnb);
-            mnb.Relay();
+            int nDoS = 0;
+            if (snodeman.CheckSnbAndUpdateSystemnodeList(mnb, nDoS)) {
+                successful++;
+            } else {
+                fail++;
+                statusObj += "\nFailed to start " + mne.getAlias() + ". Error: Systemnode broadcast rejected by local validation. See debug.log for details.";
+            }
         } else {
             fail++;
             statusObj += "\nFailed to start " + mne.getAlias() + ". Error: " + errorMessage;
