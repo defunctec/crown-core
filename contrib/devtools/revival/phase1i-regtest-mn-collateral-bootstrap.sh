@@ -19,7 +19,7 @@ if [ "$PHASE1I_DEEP_VALIDATION" = "1" ]; then
   POS_WAIT_SECS="${POS_WAIT_SECS:-180}"
   POST_POS_WAIT_SECS="${POST_POS_WAIT_SECS:-600}"
 else
-  REGTEST_POS_START_HEIGHT="${REGTEST_POS_START_HEIGHT:-1050}"
+  REGTEST_POS_START_HEIGHT="${REGTEST_POS_START_HEIGHT:-1200}"
   FUNDING_HEIGHT="${FUNDING_HEIGHT:-980}"
   PRE_POS_CHUNK="${PRE_POS_CHUNK:-100}"
   STAGE_WAIT_SECS="${STAGE_WAIT_SECS:-120}"
@@ -28,8 +28,10 @@ else
   POS_WAIT_SECS="${POS_WAIT_SECS:-120}"
   POST_POS_WAIT_SECS="${POST_POS_WAIT_SECS:-180}"
 fi
-SYSTEMNODE_SERVICE_ADDR="${SYSTEMNODE_SERVICE_ADDR:-}"
-MASTERNODE_SERVICE_ADDR="${MASTERNODE_SERVICE_ADDR:-}"
+  MAX_COLLATERAL_TX_INPUTS="${MAX_COLLATERAL_TX_INPUTS:-120}"
+  COLLATERAL_TX_FEE="${COLLATERAL_TX_FEE:-0.01}"
+  SYSTEMNODE_SERVICE_ADDR="${SYSTEMNODE_SERVICE_ADDR:-}"
+  MASTERNODE_SERVICE_ADDR="${MASTERNODE_SERVICE_ADDR:-}"
 
 if [ -z "$SYSTEMNODE_SERVICE_ADDR" ]; then
   echo "Set SYSTEMNODE_SERVICE_ADDR (example: 8.8.8.8:24003)." >&2
@@ -181,15 +183,97 @@ print(payload.hex())
 PY
 }
 
+select_largest_utxos() {
+  local utxos_json="$1"
+  local max_inputs="$2"
+  local out_json="$3"
+  python3 - "$utxos_json" "$max_inputs" "$out_json" <<'PY'
+import json, decimal, sys
+utxos = json.load(open(sys.argv[1]))
+max_inputs = int(sys.argv[2])
+out_json = sys.argv[3]
+utxos = sorted(utxos, key=lambda u: decimal.Decimal(str(u['amount'])), reverse=True)
+sel = utxos[:max_inputs]
+total = sum(decimal.Decimal(str(u['amount'])) for u in sel)
+json.dump(sel, open(out_json, 'w'))
+print(total)
+PY
+}
+
+max_utxo_amount() {
+  local utxos_json="$1"
+  python3 - "$utxos_json" <<'PY'
+import json, decimal, sys
+utxos = json.load(open(sys.argv[1]))
+if not utxos:
+    print("0")
+else:
+    print(max(decimal.Decimal(str(u['amount'])) for u in utxos))
+PY
+}
+
+ensure_large_ctl_utxo() {
+  local min_amount="$1"
+  local payout_keyhash="$2"
+  local label="$3"
+  local rounds=0
+  while true; do
+    rpc "$ROOT" ctl listunspent > "$ROOT/utxos.$label.ensure.json"
+    local largest
+    largest="$(max_utxo_amount "$ROOT/utxos.$label.ensure.json")"
+    if python3 - "$largest" "$min_amount" <<'PY'
+import decimal, sys
+largest = decimal.Decimal(sys.argv[1])
+need = decimal.Decimal(sys.argv[2])
+raise SystemExit(0 if largest >= need else 1)
+PY
+    then
+      return 0
+    fi
+
+    rounds=$((rounds + 1))
+    if [ "$rounds" -gt 40 ]; then
+      stage_fail "collateral UTXO preparation" "unable to consolidate to target amount $min_amount in 40 rounds"
+      return 1
+    fi
+
+    local selected_json total amount raw signed txhex
+    selected_json="$ROOT/utxos.$label.ensure.selected.json"
+    total="$(select_largest_utxos "$ROOT/utxos.$label.ensure.json" "$MAX_COLLATERAL_TX_INPUTS" "$selected_json")"
+    amount="$(python3 - "$total" "$COLLATERAL_TX_FEE" <<'PY'
+import decimal, sys
+total = decimal.Decimal(sys.argv[1])
+fee = decimal.Decimal(sys.argv[2])
+value = total - fee
+if value <= 0:
+    raise SystemExit("consolidation output must be positive")
+print(value)
+PY
+)"
+    raw="$(build_raw_payment_tx "$selected_json" "$payout_keyhash" "$payout_keyhash" "$amount" "$COLLATERAL_TX_FEE")"
+    rpc "$ROOT" ctl signrawtransaction "$raw" > "$ROOT/$label.ensure.signed.json"
+    txhex="$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d["complete"] is True, d; print(d["hex"])' "$ROOT/$label.ensure.signed.json")"
+    rpc "$ROOT" ctl sendrawtransaction "$txhex" >/dev/null
+    rpc "$ROOT" ctl setgenerate true 1 >/dev/null
+    wait_all_equal_height "$(rpc "$ROOT" ctl getblockcount)" || return 1
+    echo "[$(ts)] consolidation round=$rounds largest_before=$largest target=$min_amount" >&2
+  done
+}
+
 create_collateral_tx() {
   local node="$1"
   local keyhash="$2"
   local change_keyhash="$3"
   local amount="$4"
   local label="$5"
+  ensure_large_ctl_utxo "$(python3 - "$amount" "$COLLATERAL_TX_FEE" <<'PY'
+import decimal, sys
+print(decimal.Decimal(sys.argv[1]) + decimal.Decimal(sys.argv[2]))
+PY
+)" "$change_keyhash" "$label"
   rpc "$ROOT" ctl listunspent > "$ROOT/utxos.$label.json"
   local raw signed txhex txid
-  raw="$(build_raw_payment_tx "$ROOT/utxos.$label.json" "$keyhash" "$change_keyhash" "$amount" "0.01")"
+  raw="$(build_raw_payment_tx "$ROOT/utxos.$label.json" "$keyhash" "$change_keyhash" "$amount" "$COLLATERAL_TX_FEE")"
   rpc "$ROOT" ctl signrawtransaction "$raw" > "$ROOT/$label.signed.json"
   txhex="$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d["complete"] is True, d; print(d["hex"])' "$ROOT/$label.signed.json")"
   txid="$(rpc "$ROOT" ctl sendrawtransaction "$txhex")"
@@ -250,6 +334,27 @@ wait_start_alias_success() {
     fi
     sleep 1
   done
+}
+
+set_all_mocktime() {
+  local mocktime="$1"
+  for n in "${NODES[@]}"; do
+    rpc "$ROOT" "$n" setmocktime "$mocktime" >/dev/null
+  done
+}
+
+set_staker_mocktime() {
+  local mocktime="$1"
+  for n in mn1 sn1; do
+    rpc "$ROOT" "$n" setmocktime "$mocktime" >/dev/null
+  done
+}
+
+sync_mocktime_to_tip() {
+  local tip_hash tip_time
+  tip_hash="$(rpc "$ROOT" ctl getbestblockhash)"
+  tip_time="$(rpc "$ROOT" ctl getblock "$tip_hash" | python3 -c 'import json,sys; print(json.load(sys.stdin)["time"])')"
+  set_staker_mocktime "$((tip_time + 2))"
 }
 
 record_counts() {
@@ -347,7 +452,7 @@ SN_COLLATERAL_TXID="$(create_collateral_tx sn1 "$SN_KEYHASH" "$CTL_KEYHASH" "500
 rpc "$ROOT" ctl setgenerate true 20 >/dev/null
 wait_all_equal_height "$(rpc "$ROOT" ctl getblockcount)" || { stage_fail "STAGE 4 — collateral maturity" "timeout waiting for post-collateral maturity convergence"; exit 1; }
 
-MN_KEY="$(rpc "$ROOT" mn1 masternode genkey)"
+MN_KEY="$(rpc "$ROOT" mn1 node genkey)"
 SN_KEY="$(rpc "$ROOT" sn1 node genkey)"
 cat > "$ROOT/mn1/regtest/masternode.conf" <<CFG
 mn1 $MASTERNODE_SERVICE_ADDR $MN_KEY $MN_COLLATERAL_TXID 0
@@ -355,6 +460,12 @@ CFG
 cat > "$ROOT/sn1/regtest/systemnode.conf" <<CFG
 sn1 $SYSTEMNODE_SERVICE_ADDR $SN_KEY $SN_COLLATERAL_TXID 0
 CFG
+echo "masternode=1" >> "$ROOT/mn1/crown.conf"
+echo "masternodeprivkey=$MN_KEY" >> "$ROOT/mn1/crown.conf"
+echo "masternodeaddr=$MASTERNODE_SERVICE_ADDR" >> "$ROOT/mn1/crown.conf"
+echo "systemnode=1" >> "$ROOT/sn1/crown.conf"
+echo "systemnodeprivkey=$SN_KEY" >> "$ROOT/sn1/crown.conf"
+echo "systemnodeaddr=$SYSTEMNODE_SERVICE_ADDR" >> "$ROOT/sn1/crown.conf"
 
 restart_node "$ROOT" mn1
 restart_node "$ROOT" sn1
@@ -375,11 +486,12 @@ if [ "$NOW" -lt "$MN_CONF15_TIME" ] || [ "$NOW" -lt "$SN_CONF15_TIME" ]; then
   fi
   wait_secs=$((target - NOW + 1))
   if [ "$wait_secs" -gt "$START_ALIAS_WAIT_SECS" ]; then
-    stage_fail "STAGE 4 — collateral maturity" "registration maturity wait exceeded bound: $wait_secs > $START_ALIAS_WAIT_SECS"
-    exit 1
+    echo "[$(ts)] fast-forwarding node clocks by setmocktime to satisfy collateral confirmation-time gate"
+    set_all_mocktime "$((target + 1))"
+  else
+    echo "[$(ts)] waiting ${wait_secs}s for collateral confirmation-time gate"
+    sleep "$wait_secs"
   fi
-  echo "[$(ts)] waiting ${wait_secs}s for collateral confirmation-time gate"
-  sleep "$wait_secs"
 fi
 stage_end "STAGE 4 — collateral maturity"
 
@@ -389,6 +501,7 @@ stage_end "STAGE 5 — Masternode registration"
 stage_begin "STAGE 6 — Systemnode registration"
 wait_start_alias_success sn1 systemnode sn1 "$ROOT/sn.start.valid.json" "$START_ALIAS_WAIT_SECS" || { stage_fail "STAGE 6 — Systemnode registration" "systemnode start-alias timed out"; exit 1; }
 stage_end "STAGE 6 — Systemnode registration"
+set_all_mocktime 0 || true
 stage_begin "STAGE 7 — peer/list convergence"
 sleep 3
 record_counts "after_start"
@@ -413,17 +526,24 @@ while [ "$current_height" -lt "$TARGET_PRE_POS" ]; do
   echo "[$(ts)] activation progress height=$current_height target=$TARGET_PRE_POS"
 done
 wait_all_equal_height "$TARGET_PRE_POS" || { stage_fail "STAGE 8 — MNPoS activation" "timeout waiting for pre-PoS convergence"; exit 1; }
+sync_mocktime_to_tip
 
 set +e
+rpc "$ROOT" ctl keypoolrefill 200 >/dev/null 2>&1 || true
 POW_AFTER_POS_ATTEMPT="$(rpc "$ROOT" ctl setgenerate true 1 2>&1)"
 POW_AFTER_POS_RC=$?
 set -e
 printf '%s\n' "$POW_AFTER_POS_ATTEMPT" > "$ROOT/pow_after_pos_attempt.txt"
 printf '%s\n' "$POW_AFTER_POS_RC" > "$ROOT/pow_after_pos_attempt.rc"
+if [ "$POW_AFTER_POS_RC" -eq 0 ]; then
+  stage_fail "STAGE 8 — MNPoS activation" "PoW generation succeeded unexpectedly at/after PoS boundary"
+  exit 1
+fi
 
 POS_DEADLINE=$(( $(date +%s) + POS_WAIT_SECS ))
 FIRST_POS_HEIGHT=""
 while [ "$(date +%s)" -lt "$POS_DEADLINE" ]; do
+  sync_mocktime_to_tip
   h="$(rpc "$ROOT" ctl getblockcount)"
   if [ "$h" -gt "$TARGET_PRE_POS" ]; then
     FIRST_POS_HEIGHT="$h"
@@ -444,6 +564,7 @@ if [ -n "$FIRST_POS_HEIGHT" ]; then
   POST_DEADLINE=$(( $(date +%s) + POST_POS_WAIT_SECS ))
   reached_post_target=0
   while [ "$(date +%s)" -lt "$POST_DEADLINE" ]; do
+    sync_mocktime_to_tip
     if [ "$(rpc "$ROOT" ctl getblockcount)" -ge "$POST_TARGET" ]; then
       reached_post_target=1
       break
@@ -483,6 +604,9 @@ else
 fi
 
 stage_begin "STAGE 10 — reward/accounting checks"
+reconnect_topology "$ROOT"
+target_height="$(rpc "$ROOT" ctl getblockcount)"
+wait_all_equal_height "$target_height" || { stage_fail "STAGE 10 — reward/accounting checks" "timeout waiting for final height convergence to >=$target_height"; exit 1; }
 for n in "${NODES[@]}"; do
   rpc "$ROOT" "$n" getblockchaininfo > "$ROOT/$n.blockchaininfo.final.json"
   rpc "$ROOT" "$n" getbestblockhash > "$ROOT/$n.besthash.final.txt"
@@ -503,5 +627,6 @@ PY
 stage_end "STAGE 10 — reward/accounting checks"
 
 stage_begin "STAGE 11 — cleanup"
+set_all_mocktime 0 || true
 echo "Phase 1I capture complete. mode=$([ "$PHASE1I_DEEP_VALIDATION" = "1" ] && echo deep || echo fast) artifacts=$ROOT"
 stage_end "STAGE 11 — cleanup"

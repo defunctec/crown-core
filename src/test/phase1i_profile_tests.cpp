@@ -11,6 +11,8 @@
 
 #include <boost/test/unit_test.hpp>
 
+int64_t GetSubsidy(int nHeight, const CAmount& nFees);
+
 namespace
 {
 class ScopedArgValue
