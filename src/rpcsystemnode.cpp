@@ -225,12 +225,16 @@ if (strCommand == "start-alias")
             }
 
             bool result = CSystemnodeBroadcast::Create(mne.getIp(), mne.getPrivKey(), mne.getTxHash(), mne.getOutputIndex(), errorMessage, snb);
+            if (result) {
+                int nDoS = 0;
+                if (!snodeman.CheckSnbAndUpdateSystemnodeList(snb, nDoS)) {
+                    result = false;
+                    errorMessage = "Systemnode broadcast rejected by local validation. See debug.log for details.";
+                }
+            }
 
             statusObj.push_back(Pair("result", result ? "successful" : "failed"));
-            if (result) {
-                snodeman.UpdateSystemnodeList(snb);
-                snb.Relay();
-            } else {
+            if (!result) {
                 statusObj.push_back(Pair("errorMessage", errorMessage));
             }
             break;
@@ -336,14 +340,22 @@ if (strCommand == "start-alias")
 
             Object statusObj;
             statusObj.push_back(Pair("alias", mne.getAlias()));
-            statusObj.push_back(Pair("result", result ? "successful" : "failed"));
 
             if (result) {
-                successful++;
-                snodeman.UpdateSystemnodeList(snb);
-                snb.Relay();
+                int nDoS = 0;
+                if (snodeman.CheckSnbAndUpdateSystemnodeList(snb, nDoS)) {
+                    successful++;
+                } else {
+                    failed++;
+                    result = false;
+                    errorMessage = "Systemnode broadcast rejected by local validation. See debug.log for details.";
+                }
             } else {
                 failed++;
+            }
+
+            statusObj.push_back(Pair("result", result ? "successful" : "failed"));
+            if (!result) {
                 statusObj.push_back(Pair("errorMessage", errorMessage));
             }
 
