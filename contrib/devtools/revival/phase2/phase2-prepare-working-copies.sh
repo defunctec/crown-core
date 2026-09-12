@@ -79,6 +79,23 @@ if [ -n "$ARCHIVE_FILE" ]; then
   log "Archive SHA256 verified: $ACTUAL_SHA256"
 fi
 
+assert_safe_disposable_destination() {
+  local dst="$1"
+  local canonical_dst
+  canonical_dst="$(canonical_path "$dst")"
+  [ -n "$canonical_dst" ] || die "Empty destination path is not allowed"
+  [ "$canonical_dst" != "/" ] || die "Refusing to operate on root directory"
+
+  if [ -d "$dst" ]; then
+    if [ -f "$dst/phase2-working-copy.json" ]; then
+      return 0
+    fi
+    if [ -n "$(find "$dst" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null || true)" ]; then
+      die "Destination is non-empty and not a prior phase2 disposable copy: $dst"
+    fi
+  fi
+}
+
 copy_chain_dirs() {
   local src="$1" dst="$2" label="$3"
   assert_safe_disposable_destination "$dst"
@@ -97,23 +114,6 @@ out = {
   "working_copy_dir": dst,
   "archive_modified": False,
   "contains": ["blocks", "chainstate"],
-}
-
-assert_safe_disposable_destination() {
-  local dst="$1"
-  local canonical_dst
-  canonical_dst="$(canonical_path "$dst")"
-  [ -n "$canonical_dst" ] || die "Empty destination path is not allowed"
-  [ "$canonical_dst" != "/" ] || die "Refusing to operate on root directory"
-
-  if [ -d "$dst" ]; then
-    if [ -f "$dst/phase2-working-copy.json" ]; then
-      return 0
-    fi
-    if [ -n "$(find "$dst" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null || true)" ]; then
-      die "Destination is non-empty and not a prior phase2 disposable copy: $dst"
-    fi
-  fi
 }
 with open(os.path.join(dst, "phase2-working-copy.json"), "w", encoding="utf-8") as f:
     json.dump(out, f, indent=2)
