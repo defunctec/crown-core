@@ -55,7 +55,7 @@ OFFLINE_CANONICAL="$(canonical_path "$OFFLINE_DIR")"
 SYNC_CANONICAL="$(canonical_path "$SYNC_DIR")"
 
 is_archive_path "$SOURCE_DIR" && die "--source-dir points to an archive path; provide extracted directory"
-ensure_disposable_chaincopy_dir "$SOURCE_DIR"
+ensure_chain_data_dir "$SOURCE_DIR"
 
 [ "$SOURCE_CANONICAL" != "$OFFLINE_CANONICAL" ] || die "--offline-dir must differ from --source-dir"
 [ "$SOURCE_CANONICAL" != "$SYNC_CANONICAL" ] || die "--sync-dir must differ from --source-dir"

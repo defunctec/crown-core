@@ -47,11 +47,16 @@ is_archive_path() {
   [[ "$lower" =~ \.(7z|zip|tar|tar\.gz|tgz)$ ]]
 }
 
-ensure_disposable_chaincopy_dir() {
+ensure_chain_data_dir() {
   local d="$1"
   [ -d "$d" ] || die "Datadir does not exist: $d"
   [ -d "$d/blocks" ] || die "Datadir missing blocks/: $d/blocks"
   [ -d "$d/chainstate" ] || die "Datadir missing chainstate/: $d/chainstate"
+}
+
+ensure_disposable_chaincopy_dir() {
+  local d="$1"
+  ensure_chain_data_dir "$d"
 }
 
 assert_phase2_working_copy_marker() {
