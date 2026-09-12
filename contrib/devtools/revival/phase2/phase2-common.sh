@@ -266,8 +266,15 @@ wait_rpc_ready() {
       fi
     fi
     if [ -n "$pid" ] && ! kill -0 "$pid" >/dev/null 2>&1; then
-      log "crownd exited before RPC became ready (pid=$pid, waited=${waited}s, datadir=$datadir)"
-      return 1
+      local rediscovered_pid
+      rediscovered_pid="$(phase2_find_crownd_pid_for_datadir "$datadir" || true)"
+      if [ -n "$rediscovered_pid" ] && [ "$rediscovered_pid" != "$pid" ]; then
+        pid="$rediscovered_pid"
+        printf '%s\n' "$pid" > "$datadir/crownd.phase2.pid"
+      else
+        log "crownd exited before RPC became ready (pid=$pid, waited=${waited}s, datadir=$datadir)"
+        return 1
+      fi
     fi
     sleep 2
     waited=$((waited + 2))
