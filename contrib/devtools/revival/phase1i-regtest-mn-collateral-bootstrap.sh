@@ -30,6 +30,9 @@ else
 fi
   MAX_COLLATERAL_TX_INPUTS="${MAX_COLLATERAL_TX_INPUTS:-120}"
   COLLATERAL_TX_FEE="${COLLATERAL_TX_FEE:-0.01}"
+  FINAL_CONVERGENCE_WAIT_SECS="${FINAL_CONVERGENCE_WAIT_SECS:-60}"
+  FINAL_CONVERGENCE_POLL_SECS="${FINAL_CONVERGENCE_POLL_SECS:-2}"
+  LIST_CONVERGENCE_WAIT_SECS="${LIST_CONVERGENCE_WAIT_SECS:-60}"
   SYSTEMNODE_SERVICE_ADDR="${SYSTEMNODE_SERVICE_ADDR:-}"
   MASTERNODE_SERVICE_ADDR="${MASTERNODE_SERVICE_ADDR:-}"
 
@@ -57,6 +60,8 @@ ts() { date -u +"%Y-%m-%dT%H:%M:%SZ"; }
 stage_begin() { echo "[$(ts)] BEGIN $1"; }
 stage_end() { echo "[$(ts)] END $1"; }
 VALIDATION_START_TS="$(date +%s)"
+CHECKPOINT_DIR="$ROOT/checkpoints"
+mkdir -p "$CHECKPOINT_DIR"
 
 stage_fail() {
   local stage="$1"
@@ -75,13 +80,17 @@ print_failure_diagnostics() {
     mn_state="$(rpc "$ROOT" "$n" masternode count 2>/dev/null || echo "rpc-error")"
     sn_state="$(rpc "$ROOT" "$n" systemnode count 2>/dev/null || echo "rpc-error")"
     echo "[$(ts)] node=$n height=$height besthash=$hash peers=$peers masternode_count=$mn_state systemnode_count=$sn_state" >&2
+    rpc "$ROOT" "$n" getpeerinfo > "$CHECKPOINT_DIR/$n.peerinfo.failure.json" 2>/dev/null || true
+    rpc "$ROOT" "$n" getblockchaininfo > "$CHECKPOINT_DIR/$n.blockchaininfo.failure.json" 2>/dev/null || true
+    rpc "$ROOT" "$n" systemnode list status > "$CHECKPOINT_DIR/$n.systemnode.status.failure.json" 2>/dev/null || true
+    rpc "$ROOT" "$n" masternode list status > "$CHECKPOINT_DIR/$n.masternode.status.failure.json" 2>/dev/null || true
+    tail -n 120 "$ROOT/$n/regtest/debug.log" > "$CHECKPOINT_DIR/$n.debug.failure.tail.log" 2>/dev/null || true
   done
   echo "[$(ts)] DIAGNOSTICS end" >&2
 }
 
 cleanup_on_exit() {
   local rc=$?
-  "$REPO_ROOT/contrib/devtools/revival/stop-mnpos-regtest.sh" "$ROOT" >/dev/null 2>&1 || true
   if [ "$rc" -ne 0 ]; then
     print_failure_diagnostics
     echo "[$(ts)] FAILED rc=$rc artifacts=$ROOT" >&2
@@ -89,8 +98,106 @@ cleanup_on_exit() {
     local elapsed=$(( $(date +%s) - VALIDATION_START_TS ))
     echo "[$(ts)] COMPLETE artifacts=$ROOT runtime_seconds=$elapsed"
   fi
+  "$REPO_ROOT/contrib/devtools/revival/stop-mnpos-regtest.sh" "$ROOT" >/dev/null 2>&1 || true
 }
 trap cleanup_on_exit EXIT INT TERM
+
+rpc_or_placeholder() {
+  local node="$1"
+  shift
+  rpc "$ROOT" "$node" "$@" 2>/dev/null || echo "RPC_ERROR"
+}
+
+capture_checkpoint() {
+  local tag="$1"
+  local safe_tag="${tag// /_}"
+  for n in "${NODES[@]}"; do
+    local height hash peers chainwork mn_count sn_count
+    height="$(rpc_or_placeholder "$n" getblockcount)"
+    hash="$(rpc_or_placeholder "$n" getbestblockhash)"
+    peers="$(rpc_or_placeholder "$n" getconnectioncount)"
+    chainwork="$(rpc_or_placeholder "$n" getblockchaininfo | python3 -c 'import json,sys; d=sys.stdin.read().strip(); print(json.loads(d).get("chainwork","RPC_ERROR") if d and d!="RPC_ERROR" else "RPC_ERROR")' 2>/dev/null || echo "RPC_ERROR")"
+    mn_count="$(rpc_or_placeholder "$n" masternode count)"
+    sn_count="$(rpc_or_placeholder "$n" systemnode count)"
+    printf '%s\n' "$height" > "$CHECKPOINT_DIR/$safe_tag.$n.height.txt"
+    printf '%s\n' "$hash" > "$CHECKPOINT_DIR/$safe_tag.$n.besthash.txt"
+    printf '%s\n' "$peers" > "$CHECKPOINT_DIR/$safe_tag.$n.peers.txt"
+    printf '%s\n' "$chainwork" > "$CHECKPOINT_DIR/$safe_tag.$n.chainwork.txt"
+    printf '%s\n' "$mn_count" > "$CHECKPOINT_DIR/$safe_tag.$n.masternode.count.txt"
+    printf '%s\n' "$sn_count" > "$CHECKPOINT_DIR/$safe_tag.$n.systemnode.count.txt"
+    rpc "$ROOT" "$n" getpeerinfo > "$CHECKPOINT_DIR/$safe_tag.$n.peerinfo.json" 2>/dev/null || true
+    rpc "$ROOT" "$n" masternode list status > "$CHECKPOINT_DIR/$safe_tag.$n.masternode.status.json" 2>/dev/null || true
+    rpc "$ROOT" "$n" systemnode list status > "$CHECKPOINT_DIR/$safe_tag.$n.systemnode.status.json" 2>/dev/null || true
+    echo "[$(ts)] checkpoint=$safe_tag node=$n height=$height hash=$hash peers=$peers chainwork=$chainwork mn_count=$mn_count sn_count=$sn_count"
+  done
+}
+
+wait_tip_hash_convergence() {
+  local timeout_secs="$1"
+  local poll_secs="$2"
+  local deadline=$(( $(date +%s) + timeout_secs ))
+  local tick=0
+  while [ "$(date +%s)" -lt "$deadline" ]; do
+    tick=$((tick + 1))
+    local lines=()
+    local first_height=""
+    local first_hash=""
+    local all_equal=1
+    for n in "${NODES[@]}"; do
+      local h bh
+      h="$(rpc_or_placeholder "$n" getblockcount)"
+      bh="$(rpc_or_placeholder "$n" getbestblockhash)"
+      lines+=("$n=$h/$bh")
+      if [ -z "$first_height" ]; then
+        first_height="$h"
+        first_hash="$bh"
+      elif [ "$h" != "$first_height" ] || [ "$bh" != "$first_hash" ]; then
+        all_equal=0
+      fi
+      if [ "$h" = "RPC_ERROR" ] || [ "$bh" = "RPC_ERROR" ]; then
+        all_equal=0
+      fi
+    done
+    echo "[$(ts)] convergence ${lines[*]}"
+    rpc "$ROOT" obs getpeerinfo > "$CHECKPOINT_DIR/convergence.obs.peerinfo.$tick.json" 2>/dev/null || true
+    if [ "$all_equal" -eq 1 ]; then
+      return 0
+    fi
+    sleep "$poll_secs"
+  done
+  return 1
+}
+
+wait_service_list_convergence() {
+  local timeout_secs="$1"
+  local poll_secs="$2"
+  local deadline=$(( $(date +%s) + timeout_secs ))
+  local tick=0
+  while [ "$(date +%s)" -lt "$deadline" ]; do
+    tick=$((tick + 1))
+    local ok=1
+    for kind in masternode systemnode; do
+      local base=""
+      for n in "${NODES[@]}"; do
+        local payload
+        payload="$(rpc_or_placeholder "$n" "$kind" list status)"
+        local canonical
+        canonical="$(printf '%s' "$payload" | python3 -c 'import json,sys; d=sys.stdin.read().strip(); print("RPC_ERROR" if d=="RPC_ERROR" or not d else json.dumps(json.loads(d), sort_keys=True))' 2>/dev/null || echo "RPC_ERROR")"
+        printf '%s\n' "$canonical" > "$CHECKPOINT_DIR/list_convergence.$tick.$kind.$n.json"
+        if [ -z "$base" ]; then
+          base="$canonical"
+        elif [ "$canonical" != "$base" ]; then
+          ok=0
+        fi
+      done
+    done
+    if [ "$ok" -eq 1 ]; then
+      return 0
+    fi
+    sleep "$poll_secs"
+  done
+  return 1
+}
 
 decode_address_to_keyhash() {
   python3 - "$1" <<'PY'
@@ -505,6 +612,7 @@ set_all_mocktime 0 || true
 stage_begin "STAGE 7 — peer/list convergence"
 sleep 3
 record_counts "after_start"
+capture_checkpoint "registration_complete"
 stage_end "STAGE 7 — peer/list convergence"
 
 stage_begin "STAGE 8 — MNPoS activation"
@@ -526,6 +634,7 @@ while [ "$current_height" -lt "$TARGET_PRE_POS" ]; do
   echo "[$(ts)] activation progress height=$current_height target=$TARGET_PRE_POS"
 done
 wait_all_equal_height "$TARGET_PRE_POS" || { stage_fail "STAGE 8 — MNPoS activation" "timeout waiting for pre-PoS convergence"; exit 1; }
+capture_checkpoint "activation_boundary"
 sync_mocktime_to_tip
 
 set +e
@@ -559,17 +668,22 @@ if [ -n "$FIRST_POS_HEIGHT" ]; then
   FIRST_POS_HASH="$(rpc "$ROOT" ctl getblockhash "$FIRST_POS_HEIGHT")"
   printf '%s\n' "$FIRST_POS_HEIGHT" > "$ROOT/pos.first.height"
   printf '%s\n' "$FIRST_POS_HASH" > "$ROOT/pos.first.hash"
+  capture_checkpoint "first_pos_block"
 
   POST_TARGET=$((FIRST_POS_HEIGHT + 19))
   POST_DEADLINE=$(( $(date +%s) + POST_POS_WAIT_SECS ))
   reached_post_target=0
+  post_iter=0
   while [ "$(date +%s)" -lt "$POST_DEADLINE" ]; do
+    post_iter=$((post_iter + 1))
     sync_mocktime_to_tip
-    if [ "$(rpc "$ROOT" ctl getblockcount)" -ge "$POST_TARGET" ]; then
+    current_post_height="$(rpc "$ROOT" ctl getblockcount)"
+    capture_checkpoint "post_activation_batch_${post_iter}"
+    if [ "$current_post_height" -ge "$POST_TARGET" ]; then
       reached_post_target=1
       break
     fi
-    echo "[$(ts)] waiting for post-activation block target current=$(rpc "$ROOT" ctl getblockcount) target=$POST_TARGET"
+    echo "[$(ts)] waiting for post-activation block target current=$current_post_height target=$POST_TARGET"
     sleep 2
   done
   if [ "$reached_post_target" -ne 1 ]; then
@@ -605,8 +719,13 @@ fi
 
 stage_begin "STAGE 10 — reward/accounting checks"
 reconnect_topology "$ROOT"
-target_height="$(rpc "$ROOT" ctl getblockcount)"
-wait_all_equal_height "$target_height" || { stage_fail "STAGE 10 — reward/accounting checks" "timeout waiting for final height convergence to >=$target_height"; exit 1; }
+set_staker_mocktime 0 || true
+sleep 1
+capture_checkpoint "final_convergence_start"
+wait_tip_hash_convergence "$FINAL_CONVERGENCE_WAIT_SECS" "$FINAL_CONVERGENCE_POLL_SECS" || { stage_fail "STAGE 10 — reward/accounting checks" "timeout waiting for final tip+hash convergence"; capture_checkpoint "final_convergence_timeout"; exit 1; }
+capture_checkpoint "final_chain_converged"
+wait_service_list_convergence "$LIST_CONVERGENCE_WAIT_SECS" "$FINAL_CONVERGENCE_POLL_SECS" || { stage_fail "STAGE 10 — reward/accounting checks" "timeout waiting for MN/SN list convergence after tip convergence"; capture_checkpoint "final_list_convergence_timeout"; exit 1; }
+capture_checkpoint "final_list_converged"
 for n in "${NODES[@]}"; do
   rpc "$ROOT" "$n" getblockchaininfo > "$ROOT/$n.blockchaininfo.final.json"
   rpc "$ROOT" "$n" getbestblockhash > "$ROOT/$n.besthash.final.txt"
