@@ -227,7 +227,7 @@ start_crownd() {
     fi
   done < <(phase2_rpc_port_candidates "$datadir")
 
-  [ "$started" -eq 1 ] || die "Failed to start crownd for datadir $datadir with an available RPC port"
+  [ "$started" -eq 1 ] || die "Failed to start crownd for datadir $datadir (no usable RPC port found, or daemon exited during launch probe)"
 }
 
 wait_rpc_ready() {
