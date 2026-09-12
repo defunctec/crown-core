@@ -47,7 +47,7 @@ For each run, `ctl`, `mn1`, `sn1`, and `obs` converged to identical fixed final 
 - Incorrect `setmocktime 0` quiesce behavior identified (restores wall clock, does not disable staking): **YES**
 - Final source-backed quiesce used: **YES**
   - Stage 10 now sets staking daemons (`ctl`, `mn1`, `sn1`) to per-node `tip_time - 1` mocktime (two passes) in `contrib/devtools/revival/phase1i-regtest-mn-collateral-bootstrap.sh:240-258`
-  - Stationary precondition required before target capture in `contrib/devtools/revival/phase1i-regtest-mn-collateral-bootstrap.sh:800-819`
+  - Stationary precondition now requires all staking-node tips (`ctl`, `mn1`, `sn1`) to remain unchanged across two poll intervals before target capture in `contrib/devtools/revival/phase1i-regtest-mn-collateral-bootstrap.sh:800-833`
 
 ## Review-comment resolution (Phase 1I-related only)
 
