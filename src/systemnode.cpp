@@ -591,7 +591,7 @@ bool CSystemnodeBroadcast::CheckInputsAndAdd(int& nDoS) const
     }
 
     // Check if the IP address is already in use
-    if (snodeman.IsAddressInUse(addr)) {
+    if (snodeman.IsAddressInUse(addr, vin)) {
         LogPrintf("CSystemnodeBroadcast::CheckInputsAndAdd -- IP address already in use %s\n", addr.ToString());
         nDoS = 33;  // Increment DoS score for duplicate IP
         return false;

@@ -669,7 +669,7 @@ bool CMasternodeBroadcast::CheckInputsAndAdd(int& nDoS) const
     }
 
     // Check if the IP address is already in use
-    if (mnodeman.IsAddressInUse(addr)) {
+    if (mnodeman.IsAddressInUse(addr, vin)) {
         LogPrintf("CMasternodeBroadcast::CheckInputsAndAdd -- IP address already in use %s\n", addr.ToString());
         nDoS = 33;  // Increment DoS score for duplicate IP
         return false;

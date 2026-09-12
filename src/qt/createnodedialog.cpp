@@ -1,10 +1,7 @@
 #include "createnodedialog.h"
 #include "ui_createnodedialog.h"
 #include "ui_interface.h"
-#include "masternodeman.h"
-#include "systemnodeman.h"
 #include "net.h"
-#include "netbase.h"
 #include <QMessageBox>
 #include <QPushButton>
 
@@ -123,30 +120,7 @@ bool CreateNodeDialog::CheckIP()
         return false;
     }
 
-    // Check if the IP address is already in use by another Masternode or Systemnode
-    try {
-        if (mnodeman.IsAddressInUse(addr)) {
-            ui->ipEdit->setValid(false);
-            QMessageBox::warning(this, windowTitle(), tr("IP address is already in use by another Masternode."), QMessageBox::Ok, QMessageBox::Ok);
-            return false;
-        }
-
-        if (snodeman.IsAddressInUse(addr)) {
-            ui->ipEdit->setValid(false);
-            QMessageBox::warning(this, windowTitle(), tr("IP address is already in use by another Systemnode."), QMessageBox::Ok, QMessageBox::Ok);
-            return false;
-        }
-    } catch (const std::exception &e) {
-        ui->ipEdit->setValid(false);
-        QMessageBox::critical(this, windowTitle(), tr("An error occurred while checking the IP address: %1").arg(e.what()), QMessageBox::Ok, QMessageBox::Ok);
-        return false;
-    } catch (...) {
-        ui->ipEdit->setValid(false);
-        QMessageBox::critical(this, windowTitle(), tr("An unknown error occurred while checking the IP address."), QMessageBox::Ok, QMessageBox::Ok);
-        return false;
-    }
-
-    // IP address is valid and not in use
+    // IP address format is valid
     return true;
 }
 

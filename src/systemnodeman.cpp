@@ -476,6 +476,17 @@ bool CSystemnodeMan::IsAddressInUse(const CService& addr)
     return false;
 }
 
+bool CSystemnodeMan::IsAddressInUse(const CService& addr, const CTxIn& vin)
+{
+    LOCK(cs);
+    for (const auto& sn : vSystemnodes) {
+        if (sn.addr == addr && sn.vin != vin) {
+            return true;
+        }
+    }
+    return false;
+}
+
 std::string CSystemnodeMan::ToString() const
 {
     std::ostringstream info;

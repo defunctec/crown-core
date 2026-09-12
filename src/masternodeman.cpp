@@ -249,6 +249,17 @@ bool CMasternodeMan::IsAddressInUse(const CService& addr)
     return false;
 }
 
+bool CMasternodeMan::IsAddressInUse(const CService& addr, const CTxIn& vin)
+{
+    LOCK(cs);
+    for (const auto& mn : vMasternodes) {
+        if (mn.addr == addr && mn.vin != vin) {
+            return true;
+        }
+    }
+    return false;
+}
+
 CMasternode *CMasternodeMan::Find(const CScript &payee)
 {
     LOCK(cs);
