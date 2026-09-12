@@ -82,7 +82,12 @@ if rpc "$DATADIR" verifychain 4 288 > "$OUTDIR/verifychain.json" 2>/dev/null; th
   VERIFYCHAIN_RESULT="$(python3 - "$OUTDIR/verifychain.json" <<'PY'
 import json,sys
 v=json.load(open(sys.argv[1]))
-print('true' if v is True else 'false')
+if v is True:
+    print('true')
+elif v is False:
+    print('false')
+else:
+    print('INVALID_RESPONSE')
 PY
 )"
 else
@@ -185,6 +190,11 @@ else:
 
 verifychain_readable = (verifychain_result == 'true')
 chainstate_readable = txoutset_available or verifychain_readable
+verifychain_issue = None
+if verifychain_result == 'ERROR':
+    verifychain_issue = 'verifychain RPC failed'
+elif verifychain_result == 'INVALID_RESPONSE':
+    verifychain_issue = 'verifychain returned non-boolean payload'
 
 identity_mismatches=[]
 if blockchaininfo.get('chain') != 'main':
@@ -255,6 +265,7 @@ baseline={
         'verifychain_result': verifychain_result,
         'verifychain_raw': verifychain_json,
         'db_compatibility_issues': None if txoutset_available else 'gettxoutsetinfo unavailable or failed; inspect txoutsetinfo.json error',
+        'verifychain_issue': verifychain_issue,
     },
     'block_file_inventory': block_inventory,
     'later_supply_reconstruction_inputs': {

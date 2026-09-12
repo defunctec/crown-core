@@ -87,10 +87,13 @@ expected_mainnet_params_json() {
 import json,re,sys
 text=open(sys.argv[1], encoding='utf-8').read()
 
-main_section = re.search(r'class\s+CMainParams\s*:\s*public\s+CChainParams\s*\{.*?CMainParams\(\)\s*\{(.*?)\n\s*\}\n\s*\n\s*const\s+Checkpoints::CCheckpointData&\s+Checkpoints\(', text, re.S)
-if not main_section:
-    raise SystemExit('failed to parse CMainParams from src/chainparams.cpp')
-body = main_section.group(1)
+start = text.find('strNetworkID = "main";')
+if start < 0:
+    raise SystemExit('failed to locate mainnet parameter section')
+end = text.find('class CTestNetParams', start)
+if end < 0:
+    end = len(text)
+body = text[start:end]
 
 magic = []
 for i in range(4):

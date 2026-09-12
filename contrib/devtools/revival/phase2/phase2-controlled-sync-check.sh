@@ -237,7 +237,13 @@ max_peer_height=max(peer_startingheights) if peer_startingheights else None
 max_peer_synced_headers=max(peer_synced_headers) if peer_synced_headers else None
 max_peer_synced_blocks=max(peer_synced_blocks) if peer_synced_blocks else None
 
-newer_blocks_exist = final_height > start_height or (max_peer_height is not None and max_peer_height > start_height)
+final_headers = final_bci.get('headers') if isinstance(final_bci.get('headers'), int) else None
+newer_blocks_exist = (
+    final_height > start_height
+    or (final_headers is not None and final_headers > start_height)
+    or (max_peer_synced_headers is not None and max_peer_synced_headers > start_height)
+    or (max_peer_synced_blocks is not None and max_peer_synced_blocks > start_height)
+)
 headers_blocks_equal = final_bci.get('headers') == final_bci.get('blocks')
 active_tip_entries=[x for x in chaintips if x.get('status')=='active'] if isinstance(chaintips,list) else []
 chain_continues_normally = (start_bci.get('chain') == 'main' and final_bci.get('chain') == 'main' and len(active_tip_entries) == 1)
