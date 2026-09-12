@@ -135,10 +135,16 @@ capture_checkpoint() {
 wait_tip_hash_convergence() {
   local timeout_secs="$1"
   local poll_secs="$2"
+  local drive_staking="${3:-1}"
   local deadline=$(( $(date +%s) + timeout_secs ))
   local tick=0
   while [ "$(date +%s)" -lt "$deadline" ]; do
     tick=$((tick + 1))
+    reconnect_topology "$ROOT"
+    reinforce_observer_connectivity
+    if [ "$drive_staking" = "1" ]; then
+      sync_mocktime_to_tip
+    fi
     local lines=()
     local first_height=""
     local first_hash=""
@@ -197,6 +203,15 @@ wait_service_list_convergence() {
     sleep "$poll_secs"
   done
   return 1
+}
+
+reinforce_observer_connectivity() {
+  rpc "$ROOT" obs addnode 127.0.0.1:24001 add >/dev/null 2>&1 || true
+  rpc "$ROOT" obs addnode 127.0.0.1:24002 add >/dev/null 2>&1 || true
+  rpc "$ROOT" obs addnode 127.0.0.1:24003 add >/dev/null 2>&1 || true
+  rpc "$ROOT" obs addnode 127.0.0.1:24001 onetry >/dev/null 2>&1 || true
+  rpc "$ROOT" obs addnode 127.0.0.1:24002 onetry >/dev/null 2>&1 || true
+  rpc "$ROOT" obs addnode 127.0.0.1:24003 onetry >/dev/null 2>&1 || true
 }
 
 decode_address_to_keyhash() {
@@ -519,6 +534,7 @@ PY
 
 "$REPO_ROOT/contrib/devtools/revival/stop-mnpos-regtest.sh" "$ROOT" >/dev/null 2>&1 || true
 start_network "$ROOT"
+reinforce_observer_connectivity
 
 for n in "${NODES[@]}"; do
   rpc "$ROOT" "$n" getnetworkinfo > "$ROOT/$n.networkinfo.initial.json"
@@ -577,6 +593,7 @@ echo "systemnodeaddr=$SYSTEMNODE_SERVICE_ADDR" >> "$ROOT/sn1/crown.conf"
 restart_node "$ROOT" mn1
 restart_node "$ROOT" sn1
 reconnect_topology "$ROOT"
+reinforce_observer_connectivity
 
 record_counts "before_start"
 
@@ -719,10 +736,12 @@ fi
 
 stage_begin "STAGE 10 — reward/accounting checks"
 reconnect_topology "$ROOT"
+reinforce_observer_connectivity
+capture_checkpoint "final_convergence_start"
+wait_tip_hash_convergence "$FINAL_CONVERGENCE_WAIT_SECS" "$FINAL_CONVERGENCE_POLL_SECS" 1 || { stage_fail "STAGE 10 — reward/accounting checks" "timeout waiting for final tip+hash convergence"; capture_checkpoint "final_convergence_timeout"; exit 1; }
 set_staker_mocktime 0 || true
 sleep 1
-capture_checkpoint "final_convergence_start"
-wait_tip_hash_convergence "$FINAL_CONVERGENCE_WAIT_SECS" "$FINAL_CONVERGENCE_POLL_SECS" || { stage_fail "STAGE 10 — reward/accounting checks" "timeout waiting for final tip+hash convergence"; capture_checkpoint "final_convergence_timeout"; exit 1; }
+wait_tip_hash_convergence "$FINAL_CONVERGENCE_WAIT_SECS" "$FINAL_CONVERGENCE_POLL_SECS" 0 || { stage_fail "STAGE 10 — reward/accounting checks" "timeout waiting for quiesced tip+hash convergence"; capture_checkpoint "final_quiesced_convergence_timeout"; exit 1; }
 capture_checkpoint "final_chain_converged"
 wait_service_list_convergence "$LIST_CONVERGENCE_WAIT_SECS" "$FINAL_CONVERGENCE_POLL_SECS" || { stage_fail "STAGE 10 — reward/accounting checks" "timeout waiting for MN/SN list convergence after tip convergence"; capture_checkpoint "final_list_convergence_timeout"; exit 1; }
 capture_checkpoint "final_list_converged"
