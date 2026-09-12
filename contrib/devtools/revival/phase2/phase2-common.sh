@@ -331,6 +331,12 @@ stop_crownd() {
       fi
     fi
     if [ "$pid_alive" -eq 0 ] && [ "$rpc_alive" -eq 0 ]; then
+      local replacement_pid
+      replacement_pid="$(phase2_find_crownd_pid_for_datadir "$datadir" || true)"
+      if [ -n "$replacement_pid" ] && [ "$replacement_pid" != "$pid" ]; then
+        pid="$replacement_pid"
+        continue
+      fi
       break
     fi
     sleep 1
