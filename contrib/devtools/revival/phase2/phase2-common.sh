@@ -6,6 +6,8 @@ REPO_ROOT="$(cd "$PHASE2_DIR/../../../.." && pwd)"
 BIN_DIR="${BIN_DIR:-$REPO_ROOT/src}"
 CROWND_BIN="${CROWND_BIN:-$BIN_DIR/crownd}"
 CROWNCLI_BIN="${CROWNCLI_BIN:-$BIN_DIR/crown-cli}"
+PHASE2_RPC_PORT_BASE="${PHASE2_RPC_PORT_BASE:-29000}"
+PHASE2_RPC_PORT_SPAN="${PHASE2_RPC_PORT_SPAN:-1000}"
 
 log() {
   printf '[phase2] %s\n' "$*" >&2
@@ -84,7 +86,9 @@ PY
 start_crownd() {
   local datadir="$1"
   shift
-  "$CROWND_BIN" -datadir="$datadir" -server=1 -daemon=1 "$@" >/dev/null
+  local rpc_port
+  rpc_port="$(phase2_rpc_port "$datadir")"
+  "$CROWND_BIN" -datadir="$datadir" -server=1 -daemon=1 -pid="$datadir/crownd.phase2.pid" -rpcport="$rpc_port" "$@" >/dev/null
 }
 
 wait_rpc_ready() {
@@ -92,7 +96,7 @@ wait_rpc_ready() {
   local max_wait="${2:-180}"
   local waited=0
   while [ "$waited" -lt "$max_wait" ]; do
-    if "$CROWNCLI_BIN" -datadir="$datadir" getblockcount >/dev/null 2>&1; then
+    if "$CROWNCLI_BIN" -datadir="$datadir" -rpcconnect=127.0.0.1 -rpcport="$(phase2_rpc_port "$datadir")" getblockcount >/dev/null 2>&1; then
       return 0
     fi
     sleep 2
@@ -103,20 +107,38 @@ wait_rpc_ready() {
 
 stop_crownd() {
   local datadir="$1"
-  "$CROWNCLI_BIN" -datadir="$datadir" stop >/dev/null 2>&1 || true
+  "$CROWNCLI_BIN" -datadir="$datadir" -rpcconnect=127.0.0.1 -rpcport="$(phase2_rpc_port "$datadir")" stop >/dev/null 2>&1 || true
 }
 
 rpc() {
   local datadir="$1"
   shift
-  "$CROWNCLI_BIN" -datadir="$datadir" "$@"
+  "$CROWNCLI_BIN" -datadir="$datadir" -rpcconnect=127.0.0.1 -rpcport="$(phase2_rpc_port "$datadir")" "$@"
 }
 
 assert_rpc_not_ready() {
   local datadir="$1"
-  if "$CROWNCLI_BIN" -datadir="$datadir" getblockcount >/dev/null 2>&1; then
+  if "$CROWNCLI_BIN" -datadir="$datadir" -rpcconnect=127.0.0.1 -rpcport="$(phase2_rpc_port "$datadir")" getblockcount >/dev/null 2>&1; then
     die "A crownd instance appears to be running already for datadir: $datadir"
   fi
+}
+
+phase2_rpc_port() {
+  local datadir="$1"
+  if [ -n "${PHASE2_RPC_PORT:-}" ]; then
+    printf '%s\n' "$PHASE2_RPC_PORT"
+    return 0
+  fi
+  python3 - "$datadir" "$PHASE2_RPC_PORT_BASE" "$PHASE2_RPC_PORT_SPAN" <<'PY'
+import hashlib, os, sys
+path = os.path.realpath(sys.argv[1]).encode("utf-8")
+base = int(sys.argv[2])
+span = int(sys.argv[3])
+if span < 1:
+    raise SystemExit("PHASE2_RPC_PORT_SPAN must be >= 1")
+h = int(hashlib.sha256(path).hexdigest()[:8], 16)
+print(base + (h % span))
+PY
 }
 
 expected_mainnet_params_json() {

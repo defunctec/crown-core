@@ -27,6 +27,7 @@ Both runtime scripts reject datadirs whose `crown.conf` explicitly enables non-m
 - **Native Windows:** not supported by these scripts as-is (they are Bash scripts).
 - **WSL:** required/recommended for running these scripts.
 - `crownd` and `crown-cli` binaries are required and must be runnable from WSL (`BIN_DIR`, or `CROWND_BIN`/`CROWNCLI_BIN`).
+- Scripts use a datadir-derived RPC port automatically; set `PHASE2_RPC_PORT=<port>` to override if needed.
 
 ## Local run commands (WSL)
 
