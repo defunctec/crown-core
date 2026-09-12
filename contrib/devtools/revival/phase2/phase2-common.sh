@@ -137,6 +137,10 @@ assert_no_crownd_for_datadir() {
     fi
   fi
 
+  if [ ! -d /proc ]; then
+    return 0
+  fi
+
   local proc_check_status=0
   python3 - "$canonical" <<'PY' || proc_check_status=$?
 import glob, os, sys
