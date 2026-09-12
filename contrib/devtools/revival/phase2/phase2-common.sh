@@ -314,6 +314,13 @@ stop_crownd() {
 
   waited=0
   while [ "$waited" -lt 120 ]; do
+    if [ -z "$pid" ] || ! kill -0 "$pid" >/dev/null 2>&1; then
+      local probe_pid
+      probe_pid="$(phase2_find_crownd_pid_for_datadir "$datadir" || true)"
+      if [ -n "$probe_pid" ]; then
+        pid="$probe_pid"
+      fi
+    fi
     local pid_alive=0 rpc_alive=0
     if [ -n "$pid" ] && kill -0 "$pid" >/dev/null 2>&1; then
       pid_alive=1
@@ -329,6 +336,13 @@ stop_crownd() {
     sleep 1
     waited=$((waited + 1))
   done
+  if [ -z "$pid" ] || ! kill -0 "$pid" >/dev/null 2>&1; then
+    local final_probe_pid
+    final_probe_pid="$(phase2_find_crownd_pid_for_datadir "$datadir" || true)"
+    if [ -n "$final_probe_pid" ]; then
+      pid="$final_probe_pid"
+    fi
+  fi
   local pid_alive_final=0 rpc_alive_final=0
   if [ -n "$pid" ] && kill -0 "$pid" >/dev/null 2>&1; then
     pid_alive_final=1
@@ -466,7 +480,18 @@ import re,sys
 print(re.escape(sys.argv[1]))
 PY
 )"
-    pgrep -f "crownd(.+)?-datadir(=| )${escaped}" | head -n 1 || true
+    while IFS= read -r candidate; do
+      [ -n "$candidate" ] || continue
+      local comm args
+      comm="$(ps -p "$candidate" -o comm= 2>/dev/null | tr -d '\r\n' || true)"
+      args="$(ps -p "$candidate" -o args= 2>/dev/null || true)"
+      [[ "$comm" == *crownd* ]] || continue
+      if [[ "$args" == *"-datadir=$canonical"* ]] || [[ "$args" == *"-datadir $canonical"* ]]; then
+        printf '%s\n' "$candidate"
+        return 0
+      fi
+    done < <(pgrep -f -- "-datadir(=| )${escaped}" || true)
+    printf '\n'
     return 0
   fi
 
