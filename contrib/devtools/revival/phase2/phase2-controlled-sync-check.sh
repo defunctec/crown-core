@@ -87,6 +87,7 @@ PY
 START_TS="$(date +%s)"
 LAST_HASH="$START_HASH"
 STAGNANT=0
+SEEN_PEER=0
 
 while true; do
   NOW_TS="$(date +%s)"
@@ -94,6 +95,15 @@ while true; do
 
   rpc "$DATADIR" getblockchaininfo > "$OUTDIR/blockchaininfo.current.json"
   rpc "$DATADIR" getpeerinfo > "$OUTDIR/peerinfo.current.json"
+  PEER_COUNT_NOW="$(python3 - "$OUTDIR/peerinfo.current.json" <<'PY'
+import json,sys
+data=json.load(open(sys.argv[1]))
+print(len(data) if isinstance(data, list) else 0)
+PY
+)"
+  if [ "$PEER_COUNT_NOW" -gt 0 ]; then
+    SEEN_PEER=1
+  fi
   CUR_HASH="$(rpc "$DATADIR" getbestblockhash)"
   CUR_HEIGHT="$(rpc "$DATADIR" getblockcount)"
   rpc "$DATADIR" getblock "$CUR_HASH" > "$OUTDIR/tip.current.json"
@@ -151,7 +161,7 @@ print('1' if isinstance(h,int) and isinstance(b,int) and h == b else '0')
 PY
 )"
 
-  if [ "$ELAPSED" -ge "$MIN_RUNTIME_SECONDS" ] && [ "$STAGNANT" -ge "$STAGNATION_POLLS" ] && [ "$HEADERS_EQ_BLOCKS" = "1" ]; then
+  if [ "$ELAPSED" -ge "$MIN_RUNTIME_SECONDS" ] && [ "$STAGNANT" -ge "$STAGNATION_POLLS" ] && [ "$HEADERS_EQ_BLOCKS" = "1" ] && [ "$SEEN_PEER" -eq 1 ]; then
     break
   fi
 

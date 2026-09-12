@@ -84,73 +84,9 @@ assert_rpc_not_ready() {
 }
 
 expected_mainnet_params_json() {
-  python3 - "$REPO_ROOT/src/chainparams.cpp" <<'PY'
-import json,re,sys
-text=open(sys.argv[1], encoding='utf-8').read()
-
-ctor_pos = text.find('CMainParams()')
-if ctor_pos < 0:
-    raise SystemExit('failed to locate CMainParams constructor')
-brace_start = text.find('{', ctor_pos)
-if brace_start < 0:
-    raise SystemExit('failed to locate CMainParams constructor opening brace')
-depth = 0
-brace_end = -1
-for i in range(brace_start, len(text)):
-    ch = text[i]
-    if ch == '{':
-        depth += 1
-    elif ch == '}':
-        depth -= 1
-        if depth == 0:
-            brace_end = i
-            break
-if brace_end < 0:
-    raise SystemExit('failed to locate CMainParams constructor closing brace')
-body = text[brace_start:brace_end+1]
-
-magic = []
-for i in range(4):
-    m = re.search(rf'pchMessageStart\[{i}\]\s*=\s*0x([0-9a-fA-F]+);', body)
-    if not m:
-        raise SystemExit('failed to parse mainnet pchMessageStart')
-    magic.append(int(m.group(1), 16))
-
-m = re.search(r'assert\(hashGenesisBlock\s*==\s*uint256S\("0x([0-9a-fA-F]+)"\)\);', body)
-if not m:
-    raise SystemExit('failed to parse mainnet genesis assert hash')
-genesis = m.group(1).lower()
-
-port_m = re.search(r'nDefaultPort\s*=\s*([0-9]+);', body)
-halving_m = re.search(r'nSubsidyHalvingInterval\s*=\s*([0-9]+);', body)
-if not port_m or not halving_m:
-    raise SystemExit('failed to parse mainnet port/halving interval')
-
-prefix = text[:ctor_pos]
-cp_matches = list(re.finditer(
-    r'static\s+Checkpoints::MapCheckpoints\s+mapCheckpoints\s*=\s*(.*?)\s*;\s*'
-    r'static\s+const\s+Checkpoints::CCheckpointData\s+data\s*=',
-    prefix,
-    re.S
-))
-if not cp_matches:
-    raise SystemExit('failed to parse mainnet checkpoint map')
-cp_body = cp_matches[-1].group(1)
-checkpoints = []
-for h, hh in re.findall(r'\(\s*([0-9]+)\s*,\s*uint256S\("0x([0-9a-fA-F]+)"\)\s*\)', cp_body):
-    checkpoints.append({"height": int(h), "hash": hh.lower()})
-checkpoints.sort(key=lambda x: x["height"])
-
-print(json.dumps({
-    "network": "main",
-    "genesis_hash": genesis,
-    "message_start_hex": ''.join(f'{b:02x}' for b in magic),
-    "message_start_bytes": magic,
-    "default_port": int(port_m.group(1)),
-    "subsidy_halving_interval": int(halving_m.group(1)),
-    "checkpoints": checkpoints,
-}, indent=2))
-PY
+  local ref="$PHASE2_DIR/mainnet-identity-reference.json"
+  [ -f "$ref" ] || die "Missing mainnet identity reference file: $ref"
+  cat "$ref"
 }
 
 scan_block_files_json() {
