@@ -118,9 +118,57 @@ rpc() {
 
 assert_rpc_not_ready() {
   local datadir="$1"
+  assert_no_crownd_for_datadir "$datadir"
   if "$CROWNCLI_BIN" -datadir="$datadir" -rpcconnect=127.0.0.1 -rpcport="$(phase2_rpc_port "$datadir")" getblockcount >/dev/null 2>&1; then
     die "A crownd instance appears to be running already for datadir: $datadir"
   fi
+}
+
+assert_no_crownd_for_datadir() {
+  local datadir="$1"
+  local canonical
+  canonical="$(canonical_path "$datadir")"
+
+  if [ -f "$datadir/crownd.phase2.pid" ]; then
+    local pid
+    pid="$(tr -cd '0-9' < "$datadir/crownd.phase2.pid" || true)"
+    if [ -n "$pid" ] && kill -0 "$pid" >/dev/null 2>&1; then
+      die "A crownd process is still running for datadir (pid file): $datadir/crownd.phase2.pid"
+    fi
+  fi
+
+  local proc_check_status=0
+  python3 - "$canonical" <<'PY' || proc_check_status=$?
+import glob, os, sys
+target = os.path.realpath(sys.argv[1])
+for cmdline_path in glob.glob('/proc/[0-9]*/cmdline'):
+    try:
+        raw = open(cmdline_path, 'rb').read()
+    except Exception:
+        continue
+    if not raw:
+        continue
+    parts = [p.decode('utf-8', errors='ignore') for p in raw.split(b'\x00') if p]
+    if not parts:
+        continue
+    exe = os.path.basename(parts[0]).lower()
+    if 'crownd' not in exe:
+        continue
+    for i, arg in enumerate(parts):
+        if arg.startswith('-datadir='):
+            value = arg.split('=', 1)[1]
+        elif arg == '-datadir' and i + 1 < len(parts):
+            value = parts[i + 1]
+        else:
+            continue
+        if os.path.realpath(value) == target:
+            raise SystemExit(1)
+PY
+  case "$proc_check_status" in
+    0) ;;
+    1) die "A crownd process with matching -datadir is already running: $datadir" ;;
+    *) die "Failed to inspect running processes for datadir lock safety: $datadir" ;;
+  esac
 }
 
 phase2_rpc_port() {

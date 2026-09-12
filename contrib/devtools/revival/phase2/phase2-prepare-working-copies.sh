@@ -81,14 +81,10 @@ fi
 
 copy_chain_dirs() {
   local src="$1" dst="$2" label="$3"
+  rm -rf "$dst"
   mkdir -p "$dst"
-
-  local blocks_dst="$dst/blocks"
-  local chainstate_dst="$dst/chainstate"
-
-  rm -rf "$blocks_dst" "$chainstate_dst"
-  cp -a "$src/blocks" "$blocks_dst"
-  cp -a "$src/chainstate" "$chainstate_dst"
+  cp -a "$src/blocks" "$dst/blocks"
+  cp -a "$src/chainstate" "$dst/chainstate"
 
   python3 - "$src" "$dst" "$label" <<'PY'
 import datetime, json, os, sys
