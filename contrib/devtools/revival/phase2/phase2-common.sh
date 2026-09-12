@@ -126,15 +126,16 @@ halving_m = re.search(r'nSubsidyHalvingInterval\s*=\s*([0-9]+);', body)
 if not port_m or not halving_m:
     raise SystemExit('failed to parse mainnet port/halving interval')
 
-cp_section = re.search(
+prefix = text[:ctor_pos]
+cp_matches = list(re.finditer(
     r'static\s+Checkpoints::MapCheckpoints\s+mapCheckpoints\s*=\s*(.*?)\s*;\s*'
     r'static\s+const\s+Checkpoints::CCheckpointData\s+data\s*=',
-    text,
+    prefix,
     re.S
-)
-if not cp_section:
+))
+if not cp_matches:
     raise SystemExit('failed to parse mainnet checkpoint map')
-cp_body = cp_section.group(1)
+cp_body = cp_matches[-1].group(1)
 checkpoints = []
 for h, hh in re.findall(r'\(\s*([0-9]+)\s*,\s*uint256S\("0x([0-9a-fA-F]+)"\)\s*\)', cp_body):
     checkpoints.append({"height": int(h), "hash": hh.lower()})
@@ -219,7 +220,14 @@ import glob, os, sys
 blocks_dir=sys.argv[1]
 blk0=os.path.join(blocks_dir,'blk00000.dat')
 if not os.path.exists(blk0):
-    files=sorted(glob.glob(os.path.join(blocks_dir,'blk*.dat')))
+    files=glob.glob(os.path.join(blocks_dir,'blk*.dat'))
+    def index_of(path):
+        name=os.path.basename(path)
+        if not (name.startswith('blk') and name.endswith('.dat')):
+            return 10**18
+        middle=name[3:-4]
+        return int(middle) if middle.isdigit() else 10**18
+    files=sorted(files, key=index_of)
     if not files:
         print('')
         raise SystemExit(0)
