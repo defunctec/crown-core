@@ -179,6 +179,17 @@ assert_no_crownd_for_datadir() {
   fi
 
   if [ ! -d /proc ]; then
+    if command -v pgrep >/dev/null 2>&1; then
+      local escaped
+      escaped="$(python3 - "$canonical" <<'PY'
+import re,sys
+print(re.escape(sys.argv[1]))
+PY
+)"
+      if pgrep -f "crownd(.+)?-datadir(=| )${escaped}([[:space:]]|$)" >/dev/null 2>&1; then
+        die "A crownd process with matching -datadir is already running: $datadir"
+      fi
+    fi
     return 0
   fi
 

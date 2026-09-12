@@ -98,8 +98,14 @@ assert_safe_disposable_destination() {
 
 copy_chain_dirs() {
   local src="$1" dst="$2" label="$3"
+  local reset_required=0
   assert_safe_disposable_destination "$dst"
-  rm -rf "$dst"
+  if [ -d "$dst" ] && [ -f "$dst/phase2-working-copy.json" ]; then
+    reset_required=1
+  fi
+  if [ "$reset_required" -eq 1 ]; then
+    rm -rf "$dst"
+  fi
   mkdir -p "$dst"
   mkdir -p "$dst/blocks" "$dst/chainstate"
   cp -a --no-preserve=links "$src/blocks/." "$dst/blocks/"
