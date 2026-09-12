@@ -429,6 +429,7 @@ std::string HelpMessage(HelpMessageMode mode)
         strUsage += "                         " + _("This is intended for regression testing tools and app development.") + "\n";
         strUsage += "                         " + _("In this mode -genproclimit controls how many blocks are generated immediately.") + "\n";
         strUsage += "  -regtestsubsidyhalvinginterval=<n> " + strprintf(_("Override regtest subsidy halving interval for test-only scenarios (default: %u)"), 150) + "\n";
+        strUsage += "  -regtestposstartheight=<n> " + strprintf(_("Override regtest PoS activation height for test-only scenarios (default: %u)"), 141000) + "\n";
     }
     strUsage += "  -shrinkdebugfile       " + _("Shrink debug.log file on client startup (default: 1 when no -debug)") + "\n";
     strUsage += "  -testnet               " + _("Use the test network") + "\n";

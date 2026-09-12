@@ -574,7 +574,7 @@ static CDevNetParams *devNetParams;
  */
 class CRegTestParams : public CTestNetParams {
 public:
-    CRegTestParams() : nDefaultSubsidyHalvingInterval(150) {
+    CRegTestParams() : nDefaultSubsidyHalvingInterval(150), nDefaultPoSStartHeight(141000) {
         networkID = CBaseChainParams::REGTEST;
         strNetworkID = "regtest";
         pchMessageStart[0] = 0xfb;
@@ -582,6 +582,7 @@ public:
         pchMessageStart[2] = 0xc6;
         pchMessageStart[3] = 0xdf;
         nSubsidyHalvingInterval = nDefaultSubsidyHalvingInterval;
+        nBlockPoSStart = nDefaultPoSStartHeight;
         nEnforceBlockUpgradeMajority = 750;
         nRejectBlockOutdatedMajority = 950;
         nToCheckBlockUpgradeMajority = 1000;
@@ -624,6 +625,21 @@ public:
         nSubsidyHalvingInterval = static_cast<int>(overrideInterval);
     }
 
+    void UpdatePoSStartHeightFromArgs()
+    {
+        nBlockPoSStart = nDefaultPoSStartHeight;
+        if (!IsArgSet("-regtestposstartheight")) {
+            return;
+        }
+
+        int64_t overrideHeight = GetArg("-regtestposstartheight", nDefaultPoSStartHeight);
+        if (overrideHeight < 1 || overrideHeight > std::numeric_limits<int>::max()) {
+            throw std::runtime_error("-regtestposstartheight must be between 1 and 2147483647");
+        }
+
+        nBlockPoSStart = static_cast<int>(overrideHeight);
+    }
+
     const Checkpoints::CCheckpointData& Checkpoints() const 
     {
         return dataRegtest;
@@ -641,6 +657,7 @@ public:
 
 private:
     const int nDefaultSubsidyHalvingInterval;
+    const int nDefaultPoSStartHeight;
 };
 static CRegTestParams regTestParams;
 
@@ -731,6 +748,7 @@ void SelectParams(CBaseChainParams::Network network) {
     }
     if (network == CBaseChainParams::REGTEST) {
         regTestParams.UpdateSubsidyHalvingIntervalFromArgs();
+        regTestParams.UpdatePoSStartHeightFromArgs();
     }
 
     SelectBaseParams(network);

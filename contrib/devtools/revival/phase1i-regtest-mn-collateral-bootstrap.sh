@@ -8,14 +8,28 @@ RPC_USER="${RPC_USER:-rt}"
 RPC_PASS="${RPC_PASS:-phase1i}"
 KEEP_WORKDIR="${KEEP_WORKDIR:-1}"
 REGTEST_SUBSIDY_HALVING_INTERVAL="${REGTEST_SUBSIDY_HALVING_INTERVAL:-2100000}"
+PHASE1I_DEEP_VALIDATION="${PHASE1I_DEEP_VALIDATION:-0}"
+if [ "$PHASE1I_DEEP_VALIDATION" = "1" ]; then
+  REGTEST_POS_START_HEIGHT="${REGTEST_POS_START_HEIGHT:-141000}"
+  FUNDING_HEIGHT="${FUNDING_HEIGHT:-1000}"
+  PRE_POS_CHUNK="${PRE_POS_CHUNK:-2000}"
+  STAGE_WAIT_SECS="${STAGE_WAIT_SECS:-180}"
+  START_ALIAS_WAIT_SECS="${START_ALIAS_WAIT_SECS:-600}"
+  PRE_POS_WAIT_SECS="${PRE_POS_WAIT_SECS:-7200}"
+  POS_WAIT_SECS="${POS_WAIT_SECS:-180}"
+  POST_POS_WAIT_SECS="${POST_POS_WAIT_SECS:-600}"
+else
+  REGTEST_POS_START_HEIGHT="${REGTEST_POS_START_HEIGHT:-1050}"
+  FUNDING_HEIGHT="${FUNDING_HEIGHT:-980}"
+  PRE_POS_CHUNK="${PRE_POS_CHUNK:-100}"
+  STAGE_WAIT_SECS="${STAGE_WAIT_SECS:-120}"
+  START_ALIAS_WAIT_SECS="${START_ALIAS_WAIT_SECS:-120}"
+  PRE_POS_WAIT_SECS="${PRE_POS_WAIT_SECS:-180}"
+  POS_WAIT_SECS="${POS_WAIT_SECS:-120}"
+  POST_POS_WAIT_SECS="${POST_POS_WAIT_SECS:-180}"
+fi
 SYSTEMNODE_SERVICE_ADDR="${SYSTEMNODE_SERVICE_ADDR:-}"
 MASTERNODE_SERVICE_ADDR="${MASTERNODE_SERVICE_ADDR:-}"
-FUNDING_HEIGHT="${FUNDING_HEIGHT:-1000}"
-STAGE_WAIT_SECS="${STAGE_WAIT_SECS:-180}"
-START_ALIAS_WAIT_SECS="${START_ALIAS_WAIT_SECS:-600}"
-PRE_POS_WAIT_SECS="${PRE_POS_WAIT_SECS:-7200}"
-POS_WAIT_SECS="${POS_WAIT_SECS:-180}"
-POST_POS_WAIT_SECS="${POST_POS_WAIT_SECS:-600}"
 
 if [ -z "$SYSTEMNODE_SERVICE_ADDR" ]; then
   echo "Set SYSTEMNODE_SERVICE_ADDR (example: 8.8.8.8:24003)." >&2
@@ -25,21 +39,53 @@ if [ -z "$MASTERNODE_SERVICE_ADDR" ]; then
   echo "Set MASTERNODE_SERVICE_ADDR (example: 8.8.4.4:24002)." >&2
   exit 1
 fi
+if [ "$FUNDING_HEIGHT" -le 130 ]; then
+  echo "FUNDING_HEIGHT must be > 130 (current: $FUNDING_HEIGHT)." >&2
+  exit 1
+fi
+if [ "$REGTEST_POS_START_HEIGHT" -le "$FUNDING_HEIGHT" ]; then
+  echo "REGTEST_POS_START_HEIGHT must be greater than FUNDING_HEIGHT (current: $REGTEST_POS_START_HEIGHT, funding: $FUNDING_HEIGHT)." >&2
+  exit 1
+fi
 
-export BIN_DIR RPC_USER RPC_PASS KEEP_WORKDIR REGTEST_SUBSIDY_HALVING_INTERVAL
+export BIN_DIR RPC_USER RPC_PASS KEEP_WORKDIR REGTEST_SUBSIDY_HALVING_INTERVAL REGTEST_POS_START_HEIGHT
 source "$REPO_ROOT/contrib/devtools/revival/mnpos-repro-common.sh"
 
 ts() { date -u +"%Y-%m-%dT%H:%M:%SZ"; }
 stage_begin() { echo "[$(ts)] BEGIN $1"; }
 stage_end() { echo "[$(ts)] END $1"; }
+VALIDATION_START_TS="$(date +%s)"
+
+stage_fail() {
+  local stage="$1"
+  local reason="$2"
+  echo "[$(ts)] FAIL $stage: $reason" >&2
+  return 1
+}
+
+print_failure_diagnostics() {
+  echo "[$(ts)] DIAGNOSTICS begin" >&2
+  for n in "${NODES[@]}"; do
+    local height hash peers mn_state sn_state
+    height="$(rpc "$ROOT" "$n" getblockcount 2>/dev/null || echo "rpc-error")"
+    hash="$(rpc "$ROOT" "$n" getbestblockhash 2>/dev/null || echo "rpc-error")"
+    peers="$(rpc "$ROOT" "$n" getconnectioncount 2>/dev/null || echo "rpc-error")"
+    mn_state="$(rpc "$ROOT" "$n" masternode count 2>/dev/null || echo "rpc-error")"
+    sn_state="$(rpc "$ROOT" "$n" systemnode count 2>/dev/null || echo "rpc-error")"
+    echo "[$(ts)] node=$n height=$height besthash=$hash peers=$peers masternode_count=$mn_state systemnode_count=$sn_state" >&2
+  done
+  echo "[$(ts)] DIAGNOSTICS end" >&2
+}
 
 cleanup_on_exit() {
   local rc=$?
   "$REPO_ROOT/contrib/devtools/revival/stop-mnpos-regtest.sh" "$ROOT" >/dev/null 2>&1 || true
   if [ "$rc" -ne 0 ]; then
+    print_failure_diagnostics
     echo "[$(ts)] FAILED rc=$rc artifacts=$ROOT" >&2
   else
-    echo "[$(ts)] COMPLETE artifacts=$ROOT"
+    local elapsed=$(( $(date +%s) - VALIDATION_START_TS ))
+    echo "[$(ts)] COMPLETE artifacts=$ROOT runtime_seconds=$elapsed"
   fi
 }
 trap cleanup_on_exit EXIT INT TERM
@@ -155,12 +201,14 @@ create_collateral_tx() {
 
 wait_all_equal_height() {
   local min_height="$1"
-  for _ in $(seq 1 "$STAGE_WAIT_SECS"); do
+  for i in $(seq 1 "$STAGE_WAIT_SECS"); do
     local ok=1
     local ref=-1
+    local heights=""
     for n in "${NODES[@]}"; do
       local h
       h="$(rpc "$ROOT" "$n" getblockcount)"
+      heights="$heights $n=$h"
       if [ "$ref" = "-1" ]; then
         ref="$h"
       fi
@@ -170,6 +218,9 @@ wait_all_equal_height() {
     done
     if [ "$ok" -eq 1 ]; then
       return 0
+    fi
+    if [ $((i % 10)) -eq 0 ]; then
+      echo "[$(ts)] waiting convergence min_height=$min_height$heights"
     fi
     sleep 1
   done
@@ -212,10 +263,15 @@ record_counts() {
 }
 
 stage_begin "STAGE 1 — fresh network startup"
-python3 > "$ROOT/regtest_default_issuance_limit.json" <<'PY'
+python3 - "$REGTEST_SUBSIDY_HALVING_INTERVAL" "$REGTEST_POS_START_HEIGHT" "$FUNDING_HEIGHT" > "$ROOT/regtest_profile_plan.json" <<'PY'
 COIN=100000000
-HALVING_INTERVAL=150
-POS_START_HEIGHT=141000
+import sys
+HALVING_INTERVAL=int(sys.argv[1])
+POS_START_HEIGHT=int(sys.argv[2])
+FUNDING_HEIGHT=int(sys.argv[3])
+COINBASE_MATURITY=100
+MN_COLLATERAL=10000
+SN_COLLATERAL=500
 total=0
 last_positive_height=-1
 for h in range(0, 20000):
@@ -230,7 +286,23 @@ for h in range(0, 20000):
     if subsidy > 0:
         total += subsidy
         last_positive_height = h
-print('{\n  "halving_interval": %d,\n  "pos_start_height": %d,\n  "last_positive_subsidy_height": %d,\n  "first_zero_subsidy_height": %d,\n  "max_theoretical_subsidy_crw": "%.8f",\n  "required_masternode_collateral_crw": "10000.00000000"\n}' % (HALVING_INTERVAL, POS_START_HEIGHT, last_positive_height, last_positive_height + 1, total / COIN))
+if FUNDING_HEIGHT <= COINBASE_MATURITY:
+    mature_rewards = 0
+else:
+    mature_rewards = (FUNDING_HEIGHT - COINBASE_MATURITY) * 12
+required = MN_COLLATERAL + SN_COLLATERAL
+print('{\n'
+      '  "halving_interval": %d,\n'
+      '  "pos_start_height": %d,\n'
+      '  "funding_height": %d,\n'
+      '  "coinbase_maturity_blocks": %d,\n'
+      '  "estimated_mature_funding_crw": %d,\n'
+      '  "required_collateral_total_crw": %d,\n'
+      '  "funding_margin_crw": %d,\n'
+      '  "last_positive_subsidy_height": %d,\n'
+      '  "first_zero_subsidy_height": %d,\n'
+      '  "max_theoretical_subsidy_crw": "%.8f"\n'
+      '}' % (HALVING_INTERVAL, POS_START_HEIGHT, FUNDING_HEIGHT, COINBASE_MATURITY, mature_rewards, required, mature_rewards - required, last_positive_height, last_positive_height + 1, total / COIN))
 PY
 
 "$REPO_ROOT/contrib/devtools/revival/stop-mnpos-regtest.sh" "$ROOT" >/dev/null 2>&1 || true
@@ -246,7 +318,7 @@ stage_end "STAGE 1 — fresh network startup"
 
 stage_begin "STAGE 2 — funding/bootstrap"
 rpc "$ROOT" ctl setgenerate true 130 >/dev/null
-wait_all_equal_height 130 || { echo "timeout waiting for initial chain convergence" >&2; exit 1; }
+wait_all_equal_height 130 || { stage_fail "STAGE 2 — funding/bootstrap" "timeout waiting for initial chain convergence"; exit 1; }
 
 rpc "$ROOT" ctl getnewaddress > "$ROOT/ctl.addr"
 rpc "$ROOT" mn1 getnewaddress > "$ROOT/mn1.addr"
@@ -256,7 +328,7 @@ MN_KEYHASH="$(decode_address_to_keyhash "$(cat "$ROOT/mn1.addr")")"
 SN_KEYHASH="$(decode_address_to_keyhash "$(cat "$ROOT/sn1.addr")")"
 
 rpc "$ROOT" ctl setgenerate true "$((FUNDING_HEIGHT-130))" >/dev/null
-wait_all_equal_height "$FUNDING_HEIGHT" || { echo "timeout waiting for funding height convergence" >&2; exit 1; }
+wait_all_equal_height "$FUNDING_HEIGHT" || { stage_fail "STAGE 2 — funding/bootstrap" "timeout waiting for funding height convergence"; exit 1; }
 rpc "$ROOT" ctl listunspent > "$ROOT/utxos.pre_collateral.json"
 python3 - "$ROOT/utxos.pre_collateral.json" > "$ROOT/funding_balance.json" <<'PY'
 import json, decimal, sys
@@ -273,7 +345,7 @@ stage_begin "STAGE 4 — collateral maturity"
 SN_COLLATERAL_TXID="$(create_collateral_tx sn1 "$SN_KEYHASH" "$CTL_KEYHASH" "500" "sn.collateral")"
 
 rpc "$ROOT" ctl setgenerate true 20 >/dev/null
-wait_all_equal_height "$(rpc "$ROOT" ctl getblockcount)" || { echo "timeout waiting for post-collateral maturity convergence" >&2; exit 1; }
+wait_all_equal_height "$(rpc "$ROOT" ctl getblockcount)" || { stage_fail "STAGE 4 — collateral maturity" "timeout waiting for post-collateral maturity convergence"; exit 1; }
 
 MN_KEY="$(rpc "$ROOT" mn1 masternode genkey)"
 SN_KEY="$(rpc "$ROOT" sn1 node genkey)"
@@ -303,7 +375,7 @@ if [ "$NOW" -lt "$MN_CONF15_TIME" ] || [ "$NOW" -lt "$SN_CONF15_TIME" ]; then
   fi
   wait_secs=$((target - NOW + 1))
   if [ "$wait_secs" -gt "$START_ALIAS_WAIT_SECS" ]; then
-    echo "registration maturity wait exceeded bound: $wait_secs > $START_ALIAS_WAIT_SECS" >&2
+    stage_fail "STAGE 4 — collateral maturity" "registration maturity wait exceeded bound: $wait_secs > $START_ALIAS_WAIT_SECS"
     exit 1
   fi
   echo "[$(ts)] waiting ${wait_secs}s for collateral confirmation-time gate"
@@ -312,10 +384,10 @@ fi
 stage_end "STAGE 4 — collateral maturity"
 
 stage_begin "STAGE 5 — Masternode registration"
-wait_start_alias_success mn1 masternode mn1 "$ROOT/mn.start.valid.json" "$START_ALIAS_WAIT_SECS" || { echo "masternode start-alias timed out" >&2; exit 1; }
+wait_start_alias_success mn1 masternode mn1 "$ROOT/mn.start.valid.json" "$START_ALIAS_WAIT_SECS" || { stage_fail "STAGE 5 — Masternode registration" "masternode start-alias timed out"; exit 1; }
 stage_end "STAGE 5 — Masternode registration"
 stage_begin "STAGE 6 — Systemnode registration"
-wait_start_alias_success sn1 systemnode sn1 "$ROOT/sn.start.valid.json" "$START_ALIAS_WAIT_SECS" || { echo "systemnode start-alias timed out" >&2; exit 1; }
+wait_start_alias_success sn1 systemnode sn1 "$ROOT/sn.start.valid.json" "$START_ALIAS_WAIT_SECS" || { stage_fail "STAGE 6 — Systemnode registration" "systemnode start-alias timed out"; exit 1; }
 stage_end "STAGE 6 — Systemnode registration"
 stage_begin "STAGE 7 — peer/list convergence"
 sleep 3
@@ -323,16 +395,16 @@ record_counts "after_start"
 stage_end "STAGE 7 — peer/list convergence"
 
 stage_begin "STAGE 8 — MNPoS activation"
-TARGET_PRE_POS=140999
+TARGET_PRE_POS=$((REGTEST_POS_START_HEIGHT - 1))
 current_height="$(rpc "$ROOT" ctl getblockcount)"
 pre_pos_deadline=$(( $(date +%s) + PRE_POS_WAIT_SECS ))
 while [ "$current_height" -lt "$TARGET_PRE_POS" ]; do
   if [ "$(date +%s)" -ge "$pre_pos_deadline" ]; then
-    echo "timeout before reaching pre-PoS height: current=$current_height target=$TARGET_PRE_POS" >&2
+    stage_fail "STAGE 8 — MNPoS activation" "timeout before reaching pre-PoS height: current=$current_height target=$TARGET_PRE_POS"
     exit 1
   fi
   remain=$((TARGET_PRE_POS - current_height))
-  chunk=2000
+  chunk="$PRE_POS_CHUNK"
   if [ "$remain" -lt "$chunk" ]; then
     chunk="$remain"
   fi
@@ -340,7 +412,7 @@ while [ "$current_height" -lt "$TARGET_PRE_POS" ]; do
   current_height="$(rpc "$ROOT" ctl getblockcount)"
   echo "[$(ts)] activation progress height=$current_height target=$TARGET_PRE_POS"
 done
-wait_all_equal_height "$TARGET_PRE_POS" || { echo "timeout waiting for pre-PoS convergence" >&2; exit 1; }
+wait_all_equal_height "$TARGET_PRE_POS" || { stage_fail "STAGE 8 — MNPoS activation" "timeout waiting for pre-PoS convergence"; exit 1; }
 
 set +e
 POW_AFTER_POS_ATTEMPT="$(rpc "$ROOT" ctl setgenerate true 1 2>&1)"
@@ -380,16 +452,19 @@ if [ -n "$FIRST_POS_HEIGHT" ]; then
     sleep 2
   done
   if [ "$reached_post_target" -ne 1 ]; then
-    echo "timeout waiting for post-activation block target" >&2
+    stage_fail "STAGE 9 — repeated MNPoS block production" "timeout waiting for post-activation block target"
     exit 1
   fi
 
-  python3 - "$ROOT" "$FIRST_POS_HEIGHT" "$POST_TARGET" > "$ROOT/pos_blocks_summary.json" <<'PY'
+  python3 - "$BIN_DIR" "$ROOT" "$RPC_USER" "$RPC_PASS" "$FIRST_POS_HEIGHT" "$POST_TARGET" > "$ROOT/pos_blocks_summary.json" <<'PY'
 import json, subprocess, sys
-root = sys.argv[1]
-first = int(sys.argv[2])
-target = int(sys.argv[3])
-cmd_prefix = ["/home/runner/work/crown-core/crown-core/src/crown-cli", f"-datadir={root}/ctl", "-rpcuser=rt", "-rpcpassword=phase1i"]
+bin_dir = sys.argv[1]
+root = sys.argv[2]
+rpc_user = sys.argv[3]
+rpc_pass = sys.argv[4]
+first = int(sys.argv[5])
+target = int(sys.argv[6])
+cmd_prefix = [f"{bin_dir}/crown-cli", f"-datadir={root}/ctl", f"-rpcuser={rpc_user}", f"-rpcpassword={rpc_pass}"]
 rows = []
 end = target
 height_now = int(subprocess.check_output(cmd_prefix + ["getblockcount"]).decode().strip())
@@ -402,6 +477,9 @@ for h in range(first, end + 1):
 print(json.dumps(rows, indent=2))
 PY
   stage_end "STAGE 9 — repeated MNPoS block production"
+else
+  stage_fail "STAGE 8 — MNPoS activation" "no PoS block observed before timeout"
+  exit 1
 fi
 
 stage_begin "STAGE 10 — reward/accounting checks"
@@ -410,8 +488,20 @@ for n in "${NODES[@]}"; do
   rpc "$ROOT" "$n" getbestblockhash > "$ROOT/$n.besthash.final.txt"
   rpc "$ROOT" "$n" getblockcount > "$ROOT/$n.height.final.txt"
 done
+python3 - "$ROOT" <<'PY'
+import sys, pathlib
+root = pathlib.Path(sys.argv[1])
+nodes = ["ctl", "mn1", "sn1", "obs"]
+heights = {n: int((root / f"{n}.height.final.txt").read_text().strip()) for n in nodes}
+hashes = {n: (root / f"{n}.besthash.final.txt").read_text().strip() for n in nodes}
+if len(set(heights.values())) != 1:
+    raise SystemExit("height divergence: %s" % heights)
+if len(set(hashes.values())) != 1:
+    raise SystemExit("besthash divergence: %s" % hashes)
+print('{"final_height": %d, "final_besthash": "%s"}' % (next(iter(heights.values())), next(iter(hashes.values()))))
+PY
 stage_end "STAGE 10 — reward/accounting checks"
 
 stage_begin "STAGE 11 — cleanup"
-echo "Phase 1I capture complete. Artifacts: $ROOT"
+echo "Phase 1I capture complete. mode=$([ "$PHASE1I_DEEP_VALIDATION" = "1" ] && echo deep || echo fast) artifacts=$ROOT"
 stage_end "STAGE 11 — cleanup"
