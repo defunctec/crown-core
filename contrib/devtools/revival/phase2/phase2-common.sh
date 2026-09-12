@@ -174,6 +174,14 @@ start_crownd() {
       "$CROWNCLI_BIN" -datadir="$datadir" -rpcconnect=127.0.0.1 -rpcport="$rpc_port" -rpcuser="$rpc_user" -rpcpassword="$rpc_password" stop >/dev/null 2>&1 || true
       if [ -n "$pid" ]; then
         kill "$pid" >/dev/null 2>&1 || true
+        local shutdown_wait=0
+        while [ "$shutdown_wait" -lt 10 ] && kill -0 "$pid" >/dev/null 2>&1; do
+          sleep 1
+          shutdown_wait=$((shutdown_wait + 1))
+        done
+        if kill -0 "$pid" >/dev/null 2>&1; then
+          die "crownd start probe left a running process after failed readiness check (pid=$pid, datadir=$datadir)"
+        fi
       fi
       rm -f "$datadir/crownd.phase2.pid"
     fi
@@ -238,6 +246,19 @@ stop_crownd() {
     sleep 1
     waited=$((waited + 1))
   done
+  local pid_alive_final=0 rpc_alive_final=0
+  if [ -n "$pid" ] && kill -0 "$pid" >/dev/null 2>&1; then
+    pid_alive_final=1
+  fi
+  if [ "$port_from_file" -eq 1 ]; then
+    if "$CROWNCLI_BIN" -datadir="$datadir" -rpcconnect=127.0.0.1 -rpcport="$port" -rpcuser="$rpc_user" -rpcpassword="$rpc_password" getblockcount >/dev/null 2>&1; then
+      rpc_alive_final=1
+    fi
+  fi
+  if [ "$pid_alive_final" -eq 1 ] || [ "$rpc_alive_final" -eq 1 ]; then
+    die "Failed to stop crownd cleanly for datadir: $datadir"
+  fi
+
   rm -f "$datadir/crownd.phase2.pid" "$datadir/phase2-rpc-port"
 }
 
