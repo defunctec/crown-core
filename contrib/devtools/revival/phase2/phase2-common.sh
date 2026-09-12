@@ -192,6 +192,8 @@ PY
       if pgrep -f "crownd(.+)?-datadir(=| )${escaped}([[:space:]]|$)" >/dev/null 2>&1; then
         die "A crownd process with matching -datadir is already running: $datadir"
       fi
+    else
+      die "Cannot verify active crownd process for datadir safety: neither /proc nor pgrep is available"
     fi
     return 0
   fi

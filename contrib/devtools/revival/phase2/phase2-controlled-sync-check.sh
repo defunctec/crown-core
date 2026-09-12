@@ -170,14 +170,7 @@ PY
 )"
 
   if [ "$ELAPSED" -ge "$MIN_RUNTIME_SECONDS" ]; then
-    if [ "$SEEN_PEER" -eq 1 ]; then
-      if [ "$CUR_HEIGHT" -gt "$START_HEIGHT" ] || [ "$CUR_HASH" != "$START_HASH" ]; then
-        break
-      fi
-      if [ "$STAGNANT" -ge "$STAGNATION_POLLS" ] && [ "$HEADERS_EQ_BLOCKS" = "1" ]; then
-        break
-      fi
-    elif [ "$STAGNANT" -ge "$STAGNATION_POLLS" ] && [ "$HEADERS_EQ_BLOCKS" = "1" ]; then
+    if [ "$STAGNANT" -ge "$STAGNATION_POLLS" ] && [ "$HEADERS_EQ_BLOCKS" = "1" ]; then
       break
     fi
   fi
