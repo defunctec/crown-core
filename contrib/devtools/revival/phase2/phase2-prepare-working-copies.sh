@@ -50,13 +50,16 @@ require_cmd python3
 SOURCE_DIR="$(abs_path "$SOURCE_DIR")"
 OFFLINE_DIR="$(abs_path "$OFFLINE_DIR")"
 SYNC_DIR="$(abs_path "$SYNC_DIR")"
+SOURCE_CANONICAL="$(canonical_path "$SOURCE_DIR")"
+OFFLINE_CANONICAL="$(canonical_path "$OFFLINE_DIR")"
+SYNC_CANONICAL="$(canonical_path "$SYNC_DIR")"
 
 is_archive_path "$SOURCE_DIR" && die "--source-dir points to an archive path; provide extracted directory"
 ensure_disposable_chaincopy_dir "$SOURCE_DIR"
 
-[ "$SOURCE_DIR" != "$OFFLINE_DIR" ] || die "--offline-dir must differ from --source-dir"
-[ "$SOURCE_DIR" != "$SYNC_DIR" ] || die "--sync-dir must differ from --source-dir"
-[ "$OFFLINE_DIR" != "$SYNC_DIR" ] || die "--offline-dir and --sync-dir must be different"
+[ "$SOURCE_CANONICAL" != "$OFFLINE_CANONICAL" ] || die "--offline-dir must differ from --source-dir"
+[ "$SOURCE_CANONICAL" != "$SYNC_CANONICAL" ] || die "--sync-dir must differ from --source-dir"
+[ "$OFFLINE_CANONICAL" != "$SYNC_CANONICAL" ] || die "--offline-dir and --sync-dir must be different"
 
 if [ -n "$ARCHIVE_FILE" ]; then
   ARCHIVE_FILE="$(abs_path "$ARCHIVE_FILE")"

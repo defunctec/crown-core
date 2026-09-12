@@ -32,6 +32,13 @@ print(os.path.abspath(sys.argv[1]))
 PY
 }
 
+canonical_path() {
+  python3 - "$1" <<'PY'
+import os,sys
+print(os.path.realpath(sys.argv[1]))
+PY
+}
+
 is_archive_path() {
   local p="$1"
   local lower="${p,,}"
@@ -43,6 +50,35 @@ ensure_disposable_chaincopy_dir() {
   [ -d "$d" ] || die "Datadir does not exist: $d"
   [ -d "$d/blocks" ] || die "Datadir missing blocks/: $d/blocks"
   [ -d "$d/chainstate" ] || die "Datadir missing chainstate/: $d/chainstate"
+}
+
+assert_mainnet_config_only() {
+  local datadir="$1"
+  local conf="$datadir/crown.conf"
+  [ -f "$conf" ] || return 0
+
+  python3 - "$conf" <<'PY'
+import re,sys
+conf=sys.argv[1]
+bad=[]
+for raw in open(conf, encoding='utf-8', errors='ignore'):
+    line=raw.strip()
+    if not line or line.startswith('#'):
+        continue
+    line=line.split('#', 1)[0].strip()
+    if not line:
+        continue
+    compact=re.sub(r'\s+', '', line.lower())
+    if re.match(r'^(testnet|regtest)\s*=\s*1$', compact):
+        bad.append(raw.rstrip('\n'))
+    if re.match(r'^devnet\s*=', compact) and compact not in ('devnet=0',):
+        bad.append(raw.rstrip('\n'))
+if bad:
+    print("Non-mainnet configuration detected in crown.conf:")
+    for item in bad:
+        print(item)
+    raise SystemExit(1)
+PY
 }
 
 start_crownd() {

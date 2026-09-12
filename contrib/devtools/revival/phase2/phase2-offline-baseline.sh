@@ -47,6 +47,7 @@ if is_archive_path "$DATADIR"; then
   die "Refusing archive path. Provide an extracted disposable working copy directory instead."
 fi
 ensure_disposable_chaincopy_dir "$DATADIR"
+assert_mainnet_config_only "$DATADIR"
 assert_rpc_not_ready "$DATADIR"
 
 if [ -z "$OUTDIR" ]; then
@@ -65,7 +66,7 @@ cleanup() {
 trap cleanup EXIT
 
 log "Starting offline baseline against disposable working copy: $DATADIR"
-start_crownd "$DATADIR" -listen=0 -dnsseed=0 -dns=0 -discover=0 -upnp=0 -connect=0 -maxconnections=0
+start_crownd "$DATADIR" -testnet=0 -regtest=0 -listen=0 -dnsseed=0 -dns=0 -discover=0 -upnp=0 -connect=0 -maxconnections=0 -rpcbind=127.0.0.1 -rpcallowip=127.0.0.1 -rpcallowip=::1
 wait_rpc_ready "$DATADIR" 240 || die "crownd RPC did not become ready for offline baseline"
 
 rpc "$DATADIR" getblockchaininfo > "$OUTDIR/blockchaininfo.json"

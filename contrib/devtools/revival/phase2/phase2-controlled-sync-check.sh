@@ -53,6 +53,7 @@ if is_archive_path "$DATADIR"; then
   die "Refusing archive path. Provide an extracted disposable sync working copy directory instead."
 fi
 ensure_disposable_chaincopy_dir "$DATADIR"
+assert_mainnet_config_only "$DATADIR"
 assert_rpc_not_ready "$DATADIR"
 
 if [ -z "$OUTDIR" ]; then
@@ -70,10 +71,16 @@ cleanup() {
 trap cleanup EXIT
 
 log "Starting controlled sync check on disposable sync copy: $DATADIR"
-start_crownd "$DATADIR"
+start_crownd "$DATADIR" -testnet=0 -regtest=0 -rpcbind=127.0.0.1 -rpcallowip=127.0.0.1 -rpcallowip=::1
 wait_rpc_ready "$DATADIR" 300 || die "crownd RPC did not become ready for controlled sync check"
 
 rpc "$DATADIR" getblockchaininfo > "$OUTDIR/start-blockchaininfo.json"
+CHAIN_NAME="$(python3 - "$OUTDIR/start-blockchaininfo.json" <<'PY'
+import json,sys
+print(json.load(open(sys.argv[1])).get("chain",""))
+PY
+)"
+[ "$CHAIN_NAME" = "main" ] || die "Expected mainnet chain, got: ${CHAIN_NAME:-UNKNOWN}"
 START_HASH="$(rpc "$DATADIR" getbestblockhash)"
 START_HEIGHT="$(rpc "$DATADIR" getblockcount)"
 rpc "$DATADIR" getblock "$START_HASH" > "$OUTDIR/start-tip-block.json"
