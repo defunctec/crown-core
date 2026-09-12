@@ -84,3 +84,35 @@ SYNC output directory:
 Expected archive SHA256 for `crown-old-chain.7z`:
 
 `56EFDB665EF04F6AC21D218388A92471DBCB827332DCD6501872D319998FC3D0`
+
+## Version and source provenance
+
+- Canonical historical baseline commit: `3050c1f970e6dc4713c41a88f80638c597af33e9`
+- Canonical historical release identity: **Crown Core v0.14.0.4**
+- At `3050c1f...`, `configure.ac` defines:
+  - `_CLIENT_VERSION_MAJOR=0`
+  - `_CLIENT_VERSION_MINOR=14`
+  - `_CLIENT_VERSION_REVISION=0`
+  - `_CLIENT_VERSION_BUILD=4`
+- At the same commit, `src/clientversion.h` fallback metadata still has `CLIENT_VERSION_BUILD 3`.
+- `src/clientversion.h` uses `config/crown-config.h` when `HAVE_CONFIG_H` is set, so normal Autotools-configured builds derive build `4` from `configure.ac`; the fallback `3` is stale metadata and is **not** evidence of a canonical `v0.14.0.3` release.
+
+Current Phase 2A/revival branch provenance:
+
+- Current local Phase 2A audit/build `HEAD`: `b24ec8579f8a435d13803a761a1714434ef64ac8`
+- Current local binaries identify as `v0.14.0.7` plus that Git revision.
+- `v0.14.0.7` on this branch is later development ancestry, introduced by:
+  - `361f5c574aff8de59e52f403d715986b53e6e355` (30 Aug 2025, "Added compiler switch EMERGENCY_STAKEPOINTERS...")
+  - This commit changed build metadata in both `configure.ac` and `src/clientversion.h` (`6 -> 7`) and also included production-code changes in staking/wallet/masternode/systemnode/version-related areas.
+
+Interpretation for Phase 2A:
+
+- `v0.14.0.4` at `3050c1f...` remains the canonical historical baseline.
+- `v0.14.0.7` is **not** being treated as the canonical historical release.
+- This Phase 2A branch currently inherits `v0.14.0.7` metadata from later development.
+- No version rollback/rewrite is performed here; a deliberate revival versioning scheme will be chosen before release/public binaries.
+
+Local build-validation provenance:
+
+- Modern WSL local validation completed full pinned `depends` build successfully after the Phase 2A compatibility fixes.
+- Working local `crownd` and `crown-cli` binaries were produced from that pinned-depends toolchain.
