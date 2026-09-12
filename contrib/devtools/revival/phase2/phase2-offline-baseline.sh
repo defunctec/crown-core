@@ -47,6 +47,7 @@ if is_archive_path "$DATADIR"; then
   die "Refusing archive path. Provide an extracted disposable working copy directory instead."
 fi
 ensure_disposable_chaincopy_dir "$DATADIR"
+assert_phase2_working_copy_marker "$DATADIR"
 assert_mainnet_config_only "$DATADIR"
 assert_rpc_not_ready "$DATADIR"
 

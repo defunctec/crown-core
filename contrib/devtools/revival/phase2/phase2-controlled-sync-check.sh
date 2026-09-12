@@ -53,6 +53,7 @@ if is_archive_path "$DATADIR"; then
   die "Refusing archive path. Provide an extracted disposable sync working copy directory instead."
 fi
 ensure_disposable_chaincopy_dir "$DATADIR"
+assert_phase2_working_copy_marker "$DATADIR"
 assert_mainnet_config_only "$DATADIR"
 assert_rpc_not_ready "$DATADIR"
 
@@ -71,7 +72,7 @@ cleanup() {
 trap cleanup EXIT
 
 log "Starting controlled sync check on disposable sync copy: $DATADIR"
-start_crownd "$DATADIR" -testnet=0 -regtest=0 -upnp=0 -discover=0 -rpcbind=127.0.0.1 -rpcallowip=127.0.0.1 -rpcallowip=::1
+start_crownd "$DATADIR" -testnet=0 -regtest=0 -listen=0 -dnsseed=0 -dns=0 -discover=0 -upnp=0 -rpcbind=127.0.0.1 -rpcallowip=127.0.0.1 -rpcallowip=::1
 wait_rpc_ready "$DATADIR" 300 || die "crownd RPC did not become ready for controlled sync check"
 
 rpc "$DATADIR" getblockchaininfo > "$OUTDIR/start-blockchaininfo.json"

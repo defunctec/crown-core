@@ -54,6 +54,12 @@ ensure_disposable_chaincopy_dir() {
   [ -d "$d/chainstate" ] || die "Datadir missing chainstate/: $d/chainstate"
 }
 
+assert_phase2_working_copy_marker() {
+  local datadir="$1"
+  local marker="$datadir/phase2-working-copy.json"
+  [ -f "$marker" ] || die "Datadir is missing phase2 working-copy marker: $marker. Use phase2-prepare-working-copies.sh first."
+}
+
 assert_mainnet_config_only() {
   local datadir="$1"
   local conf="$datadir/crown.conf"
@@ -182,10 +188,6 @@ PY
 
 phase2_rpc_port() {
   local datadir="$1"
-  if [ -n "${PHASE2_RPC_PORT:-}" ]; then
-    printf '%s\n' "$PHASE2_RPC_PORT"
-    return 0
-  fi
   if [ -f "$datadir/phase2-rpc-port" ]; then
     local file_port
     file_port="$(tr -cd '0-9' < "$datadir/phase2-rpc-port" || true)"
@@ -213,10 +215,6 @@ PY
 
 phase2_rpc_port_candidates() {
   local datadir="$1"
-  if [ -n "${PHASE2_RPC_PORT:-}" ]; then
-    printf '%s\n' "$PHASE2_RPC_PORT"
-    return 0
-  fi
   python3 - "$datadir" "$PHASE2_RPC_PORT_BASE" "$PHASE2_RPC_PORT_SPAN" <<'PY'
 import hashlib, os, sys
 path = os.path.realpath(sys.argv[1]).encode("utf-8")
