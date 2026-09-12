@@ -44,6 +44,30 @@ PY
     return 0
   fi
 
+  if command -v ps >/dev/null 2>&1; then
+    local args
+    args="$(ps -p "$pid" -o args= 2>/dev/null || true)"
+    python3 - "$args" <<'PY'
+import shlex, sys
+args_text=sys.argv[1]
+try:
+    parts=shlex.split(args_text)
+except Exception:
+    parts=args_text.split()
+for i,arg in enumerate(parts):
+    if arg.startswith('-rpcport='):
+        v=arg.split('=',1)[1]
+        print(v if v.isdigit() else "")
+        raise SystemExit(0)
+    if arg == '-rpcport' and i+1 < len(parts):
+        v=parts[i+1]
+        print(v if v.isdigit() else "")
+        raise SystemExit(0)
+print("")
+PY
+    return 0
+  fi
+
   printf '\n'
 }
 
@@ -109,6 +133,54 @@ abs_path() {
 import os,sys
 print(os.path.abspath(sys.argv[1]))
 PY
+}
+
+phase2_pid_matches_datadir() {
+  local pid="$1"
+  local datadir="$2"
+  local canonical
+  canonical="$(canonical_path "$datadir")"
+
+  if [ -r "/proc/$pid/cmdline" ]; then
+    python3 - "$pid" "$canonical" <<'PY'
+import os, sys
+pid=sys.argv[1]
+target=os.path.realpath(sys.argv[2])
+try:
+    with open(f"/proc/{pid}/cmdline","rb") as f:
+        raw=f.read()
+except Exception:
+    raise SystemExit(1)
+parts=[p.decode("utf-8", errors="ignore") for p in raw.split(b"\x00") if p]
+if not parts:
+    raise SystemExit(1)
+exe=os.path.basename(parts[0]).lower()
+if "crownd" not in exe:
+    raise SystemExit(1)
+for i,arg in enumerate(parts):
+    if arg.startswith('-datadir='):
+        v=arg.split('=',1)[1]
+    elif arg == '-datadir' and i + 1 < len(parts):
+        v=parts[i+1]
+    else:
+        continue
+    if os.path.realpath(v) == target:
+        raise SystemExit(0)
+raise SystemExit(1)
+PY
+    return $?
+  fi
+
+  if command -v ps >/dev/null 2>&1; then
+    local comm args
+    comm="$(ps -p "$pid" -o comm= 2>/dev/null | tr -d '\r\n' || true)"
+    args="$(ps -p "$pid" -o args= 2>/dev/null || true)"
+    [[ "$comm" == *crownd* ]] || return 1
+    phase2_args_match_datadir "$canonical" "$args"
+    return $?
+  fi
+
+  return 1
 }
 
 canonical_path() {
@@ -385,7 +457,11 @@ assert_no_crownd_for_datadir() {
     local pid
     pid="$(tr -cd '0-9' < "$datadir/crownd.phase2.pid" || true)"
     if [ -n "$pid" ] && kill -0 "$pid" >/dev/null 2>&1; then
-      die "A crownd process is still running for datadir (pid file): $datadir/crownd.phase2.pid"
+      if phase2_pid_matches_datadir "$pid" "$datadir"; then
+        die "A crownd process is still running for datadir (pid file): $datadir/crownd.phase2.pid"
+      else
+        rm -f "$datadir/crownd.phase2.pid"
+      fi
     fi
   fi
 
