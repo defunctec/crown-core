@@ -101,8 +101,10 @@ copy_chain_dirs() {
   assert_safe_disposable_destination "$dst"
   rm -rf "$dst"
   mkdir -p "$dst"
-  cp -a --preserve=links "$src/blocks" "$dst/blocks"
-  cp -a --preserve=links "$src/chainstate" "$dst/chainstate"
+  mkdir -p "$dst/blocks" "$dst/chainstate"
+  cp -a "$src/blocks/." "$dst/blocks/"
+  cp -a "$src/chainstate/." "$dst/chainstate/"
+  assert_no_source_hardlinks "$src" "$dst"
 
   python3 - "$src" "$dst" "$label" <<'PY'
 import datetime, json, os, sys
@@ -117,6 +119,33 @@ out = {
 }
 with open(os.path.join(dst, "phase2-working-copy.json"), "w", encoding="utf-8") as f:
     json.dump(out, f, indent=2)
+PY
+}
+
+assert_no_source_hardlinks() {
+  local src="$1" dst="$2"
+  python3 - "$src" "$dst" <<'PY'
+import os, sys
+src, dst = sys.argv[1:3]
+src_ids = set()
+for root, _, files in os.walk(src):
+    for name in files:
+        path = os.path.join(root, name)
+        try:
+            st = os.stat(path, follow_symlinks=False)
+        except FileNotFoundError:
+            continue
+        src_ids.add((st.st_dev, st.st_ino))
+
+for root, _, files in os.walk(dst):
+    for name in files:
+        path = os.path.join(root, name)
+        try:
+            st = os.stat(path, follow_symlinks=False)
+        except FileNotFoundError:
+            continue
+        if (st.st_dev, st.st_ino) in src_ids:
+            raise SystemExit(f"Disposable copy shares hard-linked inode with source: {path}")
 PY
 }
 
