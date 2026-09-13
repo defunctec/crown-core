@@ -231,10 +231,10 @@ def rpc(*args):
 
     smoke_cmd = build_rpc_cmd('getblock', '00' * 32, False)
     smoke_rawtx_cmd = build_rpc_cmd('getrawtransaction', '00' * 32, 1)
-    assert smoke_cmd[-1] == 'false'
-    assert smoke_rawtx_cmd[-1] == '1'
-    assert 'True' not in smoke_cmd and 'False' not in smoke_cmd
-    assert 'True' not in smoke_rawtx_cmd and 'False' not in smoke_rawtx_cmd
+    if smoke_cmd[-1] != 'false' or 'True' in smoke_cmd or 'False' in smoke_cmd:
+        raise ValueError(f'getblock argv serialization regression: {smoke_cmd}')
+    if smoke_rawtx_cmd[-1] != '1' or 'True' in smoke_rawtx_cmd or 'False' in smoke_rawtx_cmd:
+        raise ValueError(f'getrawtransaction argv serialization regression: {smoke_rawtx_cmd}')
 
     cmd = build_rpc_cmd(*args)
     out = subprocess.check_output(cmd, text=True)
@@ -484,10 +484,10 @@ def rpc(*args):
 
     smoke_cmd = build_rpc_cmd('getblock', '00' * 32, False)
     smoke_rawtx_cmd = build_rpc_cmd('getrawtransaction', '00' * 32, 1)
-    assert smoke_cmd[-1] == 'false'
-    assert smoke_rawtx_cmd[-1] == '1'
-    assert 'True' not in smoke_cmd and 'False' not in smoke_cmd
-    assert 'True' not in smoke_rawtx_cmd and 'False' not in smoke_rawtx_cmd
+    if smoke_cmd[-1] != 'false' or 'True' in smoke_cmd or 'False' in smoke_cmd:
+        raise ValueError(f'getblock argv serialization regression: {smoke_cmd}')
+    if smoke_rawtx_cmd[-1] != '1' or 'True' in smoke_rawtx_cmd or 'False' in smoke_rawtx_cmd:
+        raise ValueError(f'getrawtransaction argv serialization regression: {smoke_rawtx_cmd}')
 
     cmd = build_rpc_cmd(*args)
     out = subprocess.check_output(cmd, text=True)
@@ -1000,10 +1000,10 @@ def rpc(*args):
 
     smoke_cmd = build_rpc_cmd('getblock', '00' * 32, False)
     smoke_rawtx_cmd = build_rpc_cmd('getrawtransaction', '00' * 32, 1)
-    assert smoke_cmd[-1] == 'false'
-    assert smoke_rawtx_cmd[-1] == '1'
-    assert 'True' not in smoke_cmd and 'False' not in smoke_cmd
-    assert 'True' not in smoke_rawtx_cmd and 'False' not in smoke_rawtx_cmd
+    if smoke_cmd[-1] != 'false' or 'True' in smoke_cmd or 'False' in smoke_cmd:
+        raise ValueError(f'getblock argv serialization regression: {smoke_cmd}')
+    if smoke_rawtx_cmd[-1] != '1' or 'True' in smoke_rawtx_cmd or 'False' in smoke_rawtx_cmd:
+        raise ValueError(f'getrawtransaction argv serialization regression: {smoke_rawtx_cmd}')
 
     cmd = build_rpc_cmd(*args)
     out = subprocess.check_output(cmd, text=True)
