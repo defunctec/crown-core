@@ -593,7 +593,7 @@ Value exportutxosnapshot(const Array& params, bool fHelp)
         }
 
         ExportVisitor visitor(context, &writeError);
-        ok = coinsdb->ForEachCoin(boost::bind(&ExportVisitor::Visit, &visitor, boost::placeholders::_1, boost::placeholders::_2));
+        ok = coinsdb->ForEachCoin(boost::bind(&ExportVisitor::Visit, &visitor, _1, _2));
     }
 
     out.flush();
