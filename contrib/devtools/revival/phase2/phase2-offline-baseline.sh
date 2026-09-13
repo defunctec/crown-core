@@ -1308,16 +1308,29 @@ if suggested_candidate is not None:
         required_candidates.append(auto_candidate)
 
 provisional_snapshot_candidate = candidate_at('provisional_legacy_holder_revival_snapshot', provisional_cutoff_utc)
+resolved_block = {
+    'height': provisional_height,
+    'hash': provisional_hash,
+    'timestamp_utc': provisional_timestamp_utc,
+    'chainwork': None,
+}
+if provisional_snapshot_candidate is not None:
+    resolved_block = {
+        'height': provisional_snapshot_candidate.get('height'),
+        'hash': provisional_snapshot_candidate.get('hash'),
+        'timestamp_utc': provisional_snapshot_candidate.get('timestamp_utc'),
+        'chainwork': provisional_snapshot_candidate.get('chainwork'),
+    }
 provisional_snapshot_decision = {
     'status': 'fixed',
     'purpose': 'provisional economic/holder entitlement reference point only',
     'selection_rule': 'last active-chain block at or before 2025-07-01T23:59:59Z',
-    'resolved_block': {
+    'expected_resolved_block': {
         'height': provisional_height,
         'hash': provisional_hash,
         'timestamp_utc': provisional_timestamp_utc,
-        'chainwork': provisional_snapshot_candidate.get('chainwork') if provisional_snapshot_candidate else None,
     },
+    'resolved_block': resolved_block,
     'decision_reasons': [
         'lies on uncontested active ancestry',
         'no detected competing forks in the surrounding audit window',
