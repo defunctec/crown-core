@@ -1390,6 +1390,7 @@ for record in recent_non_active.values():
 branch_tips.sort(key=lambda b: (b['tip'].get('time') or 0, b['tip'].get('height') or -1, b['tip'].get('hash') or ''))
 
 active_window = [b for b in active_recent if isinstance(b.get('time'), int) and min_ts <= b['time'] <= anchor_ts]
+candidate_history = [b for b in active_recent if isinstance(b.get('time'), int) and b['time'] <= anchor_ts]
 intervals = []
 for prev, cur in zip(active_window, active_window[1:]):
     delta = cur['time'] - prev['time']
@@ -1430,7 +1431,7 @@ def nearby_gap(gap, block_time):
 def candidate_at(label, target_utc):
     target_ts = int(datetime.datetime.strptime(target_utc, '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=datetime.timezone.utc).timestamp())
     block = None
-    for item in active_window:
+    for item in candidate_history:
         if item['time'] <= target_ts:
             block = item
         else:
@@ -1508,12 +1509,7 @@ if suggested_candidate is not None:
         required_candidates.append(auto_candidate)
 
 provisional_snapshot_candidate = candidate_at('provisional_legacy_holder_revival_snapshot', provisional_cutoff_utc)
-resolved_block = {
-    'height': provisional_height,
-    'hash': provisional_hash,
-    'timestamp_utc': provisional_timestamp_utc,
-    'chainwork': None,
-}
+resolved_block = None
 if provisional_snapshot_candidate is not None:
     resolved_block = {
         'height': provisional_snapshot_candidate.get('height'),
