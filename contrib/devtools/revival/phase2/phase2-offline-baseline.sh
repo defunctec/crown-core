@@ -408,7 +408,7 @@ with open(out_path, 'w', encoding='utf-8') as fp:
     json.dump(analysis, fp, indent=2)
 PY
 
-if command -v git >/dev/null 2>&1; then
+if command -v git >/dev/null 2>&1 && git -C "$REPO_ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
 python3 - "$REPO_ROOT" "$FORK_HISTORY_JSON" <<'PY'
 import json
 import subprocess
@@ -459,7 +459,8 @@ else
   python3 - "$FORK_HISTORY_JSON" <<'PY'
 import json,sys
 out_path=sys.argv[1]
-history={'terms': {}, 'focused_commit': None, 'git_available': False, 'errors': ['git executable not found']}
+history={'terms': {}, 'focused_commit': None, 'git_available': False, 'errors': []}
+history['errors'].append('git executable not found or repository is not a git worktree')
 with open(out_path, 'w', encoding='utf-8') as f:
     json.dump(history, f, indent=2)
 PY

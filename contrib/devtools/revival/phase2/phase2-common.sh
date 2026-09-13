@@ -632,9 +632,9 @@ base = int(sys.argv[2])
 span = int(sys.argv[3])
 if span < 1:
     raise SystemExit("PHASE2_RPC_PORT_SPAN must be >= 1")
-if base < 1024 or base > 65535:
-    raise SystemExit("PHASE2_RPC_PORT_BASE must be between 1024 and 65535")
-max_span = 65535 - base + 1
+if base < 1024 or base > 65534:
+    raise SystemExit("PHASE2_RPC_PORT_BASE must be between 1024 and 65534")
+max_span = 65534 - base + 1
 effective_span = min(span, max_span)
 h = int(hashlib.sha256(path).hexdigest()[:8], 16)
 print(base + (h % effective_span))
@@ -650,9 +650,9 @@ base = int(sys.argv[2])
 span = int(sys.argv[3])
 if span < 1:
     raise SystemExit("PHASE2_RPC_PORT_SPAN must be >= 1")
-if base < 1024 or base > 65535:
-    raise SystemExit("PHASE2_RPC_PORT_BASE must be between 1024 and 65535")
-max_span = 65535 - base + 1
+if base < 1024 or base > 65534:
+    raise SystemExit("PHASE2_RPC_PORT_BASE must be between 1024 and 65534")
+max_span = 65534 - base + 1
 effective_span = min(span, max_span)
 h = int(hashlib.sha256(path).hexdigest()[:8], 16)
 start = base + (h % effective_span)
