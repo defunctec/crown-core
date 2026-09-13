@@ -31,6 +31,7 @@ This tooling is for local execution when `crown-old-chain.7z` is not available i
   - Post-processing only: reads existing `phase2b-utxos.jsonl` and compact evidence files, with no daemon/RPC requirement and no chainstate mutation.
   - Streams JSONL line-by-line, validates parseability, recomputes totals in integer satoshis, and fails closed on reconciliation mismatch.
   - Produces standalone aggregation/distribution artifacts so Phase 2B analysis can be rerun independently of rewind/export.
+  - Accepts optional `--raw-export-commit <git_commit>` so historical datasets can explicitly record the raw-export audit binary commit without regenerating the UTXO export.
 
 Both runtime scripts reject datadirs whose `crown.conf` contains explicit chain-selection settings (`testnet=...`, `regtest=...`, `devnet=...`, `chain=...`, or network section headers).
 `-devnet=0` is intentionally **not** used: in this Crown codebase, `-devnet` is a named-network selector, so `-devnet=0` selects/creates devnet `0` instead of disabling devnet.
@@ -85,7 +86,8 @@ contrib/devtools/revival/phase2/phase2b-reconstruct-utxo-snapshot.sh \
 contrib/devtools/revival/phase2/phase2b-analyze-utxo-snapshot.sh \
   --input /mnt/c/crown/phase2-work/phase2b-output/phase2b-utxos.jsonl \
   --evidence-dir /mnt/c/crown/phase2-work/phase2b-output \
-  --outdir /mnt/c/crown/phase2-work/phase2b-output
+  --outdir /mnt/c/crown/phase2-work/phase2b-output \
+  --raw-export-commit 516e2eb694cb73c9b14fcbff2eaf02d8a47329a3
 ```
 
 ## Expected output files
@@ -175,8 +177,9 @@ Phase 2B output directory:
 Phase 2B provenance fields include:
 - snapshot height/hash/timestamp/chainwork
 - archive SHA256
-- Crown audit binary version + Git commit
-- tooling Git commit
+- `raw_export.audit_binary_git_commit`
+- `raw_export.utxo_jsonl_sha256`
+- `post_processing.tooling_git_commit`
 - reconstruction method detail
 - generation timestamp
 - reconciliation result and artifact SHA256 hashes

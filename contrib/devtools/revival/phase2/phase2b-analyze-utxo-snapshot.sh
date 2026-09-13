@@ -7,7 +7,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 usage() {
   cat <<USAGE
 Usage:
-  $0 --input <phase2b-utxos.jsonl> --evidence-dir <phase2b_evidence_dir> [--outdir <output_dir>] [--archive-name <name>] [--archive-sha256 <hex>]
+  $0 --input <phase2b-utxos.jsonl> --evidence-dir <phase2b_evidence_dir> [--outdir <output_dir>] [--archive-name <name>] [--archive-sha256 <hex>] [--raw-export-commit <git_commit>]
 
 Notes:
   - Post-processing only. Does not start crownd, does not mutate chainstate, and does not call RPC.
@@ -26,6 +26,7 @@ SNAPSHOT_TIMESTAMP_UTC="2025-07-01T23:59:24Z"
 SNAPSHOT_CHAINWORK="00000000000000000000000000000000000000000055f92a16848adbe0b66cbe"
 EXPECTED_UTXO_COUNT="5116236"
 EXPECTED_TOTAL_CRW="34010803.11042473"
+RAW_EXPORT_COMMIT=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -43,6 +44,8 @@ while [ $# -gt 0 ]; do
       EXPECTED_UTXO_COUNT="${2:-}"; shift 2 ;;
     --expected-total-crw)
       EXPECTED_TOTAL_CRW="${2:-}"; shift 2 ;;
+    --raw-export-commit)
+      RAW_EXPORT_COMMIT="${2:-}"; shift 2 ;;
     -h|--help)
       usage; exit 0 ;;
     *)
@@ -78,12 +81,13 @@ DISTRIBUTION_JSON="$OUTDIR/phase2b-distribution-summary.json"
 
 TOOLING_COMMIT="$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null || printf 'unknown')"
 
-python3 - "$INPUT_JSONL" "$EVIDENCE_DIR" "$OUTDIR" "$EXPORT_RPC_RESULT_JSON" "$TXOUTSETINFO_JSON" "$METADATA_JSON" "$RECONSTRUCTION_AUDIT_JSON" "$BALANCES_CSV" "$BALANCES_JSONL" "$DISTRIBUTION_JSON" "$ARCHIVE_NAME" "$ARCHIVE_SHA256" "$SNAPSHOT_HEIGHT" "$SNAPSHOT_HASH" "$SNAPSHOT_TIMESTAMP_UTC" "$SNAPSHOT_CHAINWORK" "$EXPECTED_UTXO_COUNT" "$EXPECTED_TOTAL_CRW" "$TOOLING_COMMIT" <<'PY'
+python3 - "$INPUT_JSONL" "$EVIDENCE_DIR" "$OUTDIR" "$EXPORT_RPC_RESULT_JSON" "$TXOUTSETINFO_JSON" "$METADATA_JSON" "$RECONSTRUCTION_AUDIT_JSON" "$BALANCES_CSV" "$BALANCES_JSONL" "$DISTRIBUTION_JSON" "$ARCHIVE_NAME" "$ARCHIVE_SHA256" "$SNAPSHOT_HEIGHT" "$SNAPSHOT_HASH" "$SNAPSHOT_TIMESTAMP_UTC" "$SNAPSHOT_CHAINWORK" "$EXPECTED_UTXO_COUNT" "$EXPECTED_TOTAL_CRW" "$TOOLING_COMMIT" "$RAW_EXPORT_COMMIT" <<'PY'
 import csv
 import datetime
 import hashlib
 import json
 import math
+import atexit
 import os
 import sqlite3
 import sys
@@ -111,7 +115,8 @@ getcontext().prec = 50
     expected_utxo_count,
     expected_total_crw,
     tooling_commit,
-) = sys.argv[1:20]
+    raw_export_commit_arg,
+) = sys.argv[1:21]
 
 COIN = 100_000_000
 snapshot_height = int(snapshot_height)
@@ -167,9 +172,40 @@ if expected_total_sat != txoutset_total_sat:
     raise SystemExit(f"expected total mismatch with txoutset evidence: expected={expected_total_sat} evidence={txoutset_total_sat}")
 
 tmp_db_path = os.path.join(outdir, "phase2b-aggregation.tmp.sqlite")
-if os.path.exists(tmp_db_path):
-    os.remove(tmp_db_path)
+tmp_db_wal_path = f"{tmp_db_path}-wal"
+tmp_db_shm_path = f"{tmp_db_path}-shm"
+
+def cleanup_tmp_sqlite_artifacts(conn_obj=None):
+    if conn_obj is not None:
+        try:
+            conn_obj.close()
+        except Exception:
+            pass
+    for path in (tmp_db_wal_path, tmp_db_shm_path, tmp_db_path):
+        try:
+            if os.path.exists(path):
+                os.remove(path)
+        except OSError:
+            pass
+
+cleanup_tmp_sqlite_artifacts()
+
+conn_holder = {"conn": None}
+
+def _atexit_cleanup():
+    cleanup_tmp_sqlite_artifacts(conn_holder["conn"])
+    conn_holder["conn"] = None
+
+atexit.register(_atexit_cleanup)
+
+raw_export_commit = (raw_export_commit_arg or "").strip()
+if raw_export_commit == "":
+    raw_export_commit = str(export_result.get("audit_binary_git_commit") or "").strip()
+if raw_export_commit == "":
+    raw_export_commit = "unknown"
+
 conn = sqlite3.connect(tmp_db_path)
+conn_holder["conn"] = conn
 cur = conn.cursor()
 cur.execute("PRAGMA journal_mode = WAL")
 cur.execute("PRAGMA synchronous = NORMAL")
@@ -682,10 +718,16 @@ reconciliation = {
 audit = {
     "snapshot": distribution["snapshot"],
     "status": "pass",
-    "input_utxo_jsonl": {
-        "path": input_jsonl_path,
-        "sha256": input_sha256,
-        "size_bytes": input_size_bytes,
+    "raw_export": {
+        "audit_binary_git_commit": raw_export_commit,
+        "utxo_jsonl": {
+            "path": input_jsonl_path,
+            "sha256": input_sha256,
+            "size_bytes": input_size_bytes,
+        },
+    },
+    "post_processing": {
+        "tooling_git_commit": tooling_commit,
     },
     "parsing": {
         "malformed_line_count": malformed_lines,
@@ -717,7 +759,12 @@ metadata = {
         "archive_name": archive_name,
         "archive_sha256": archive_sha256.upper(),
     },
-    "code_provenance": {
+    "raw_export": {
+        "audit_binary_git_commit": raw_export_commit,
+        "utxo_jsonl_sha256": input_sha256,
+        "utxo_jsonl_path": input_jsonl_path,
+    },
+    "post_processing": {
         "tooling_git_commit": tooling_commit,
     },
     "generation": {
@@ -746,8 +793,8 @@ for path in artifact_paths:
 
 json.dump(metadata, open(metadata_path, "w", encoding="utf-8"), indent=2)
 
-if os.path.exists(tmp_db_path):
-    os.remove(tmp_db_path)
+cleanup_tmp_sqlite_artifacts(conn_holder["conn"])
+conn_holder["conn"] = None
 PY
 
 echo "[phase2] Phase 2B post-processing complete." >&2

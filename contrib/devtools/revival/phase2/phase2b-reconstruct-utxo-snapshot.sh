@@ -168,8 +168,19 @@ fi
 
 TOOLING_COMMIT="$(git -C "$REPO_ROOT" rev-parse HEAD)"
 BINARY_VERSION="$("$CROWND_BIN" --version | head -n1 | sed 's/[[:space:]]*$//')"
+EXPORT_AUDIT_BINARY_COMMIT="$TOOLING_COMMIT"
 
-python3 - "$OUTDIR" "$UTXO_JSONL" "$UTXO_CSV" "$BALANCES_CSV" "$BALANCES_JSON" "$DISTRIBUTION_JSON" "$METADATA_JSON" "$RECONSTRUCTION_AUDIT_JSON" "$EXPORT_RPC_RESULT_JSON" "$TXOUTSETINFO_JSON" "$BLOCKCHAININFO_JSON" "$SNAPSHOT_BLOCK_JSON" "$SNAPSHOT_HEIGHT" "$SNAPSHOT_HASH" "$SNAPSHOT_TIMESTAMP_UTC" "$SNAPSHOT_CHAINWORK" "$ARCHIVE_NAME" "$ARCHIVE_SHA256" "$TOOLING_COMMIT" "$BINARY_VERSION" "$RECONSTRUCTION_METHOD" "$RECONSTRUCTION_DETAIL" "$INVALIDATED_BLOCK" <<'PY'
+python3 - "$EXPORT_RPC_RESULT_JSON" "$EXPORT_AUDIT_BINARY_COMMIT" <<'PY'
+import json
+import sys
+
+path, commit = sys.argv[1:3]
+data = json.load(open(path, encoding="utf-8"))
+data["audit_binary_git_commit"] = commit
+json.dump(data, open(path, "w", encoding="utf-8"), indent=2)
+PY
+
+python3 - "$OUTDIR" "$UTXO_JSONL" "$UTXO_CSV" "$BALANCES_CSV" "$BALANCES_JSON" "$DISTRIBUTION_JSON" "$METADATA_JSON" "$RECONSTRUCTION_AUDIT_JSON" "$EXPORT_RPC_RESULT_JSON" "$TXOUTSETINFO_JSON" "$BLOCKCHAININFO_JSON" "$SNAPSHOT_BLOCK_JSON" "$SNAPSHOT_HEIGHT" "$SNAPSHOT_HASH" "$SNAPSHOT_TIMESTAMP_UTC" "$SNAPSHOT_CHAINWORK" "$ARCHIVE_NAME" "$ARCHIVE_SHA256" "$EXPORT_AUDIT_BINARY_COMMIT" "$TOOLING_COMMIT" "$BINARY_VERSION" "$RECONSTRUCTION_METHOD" "$RECONSTRUCTION_DETAIL" "$INVALIDATED_BLOCK" <<'PY'
 import csv
 import datetime
 import hashlib
@@ -199,12 +210,13 @@ from decimal import Decimal, ROUND_DOWN
     snapshot_chainwork,
     archive_name,
     archive_sha256,
+    export_audit_binary_commit,
     tooling_commit,
     binary_version,
     reconstruction_method,
     reconstruction_detail,
     invalidated_block_hash,
-) = sys.argv[1:24]
+) = sys.argv[1:25]
 
 COIN = 100_000_000
 snapshot_height = int(snapshot_height)
@@ -567,6 +579,17 @@ reconstruction_audit = {
         "time": snapshot_block.get("time"),
         "chainwork": snapshot_block.get("chainwork"),
     },
+    "raw_export": {
+        "audit_binary_git_commit": export_audit_binary_commit,
+        "utxo_jsonl": {
+            "path": utxo_jsonl_path,
+            "sha256": sha256_file(utxo_jsonl_path),
+            "size_bytes": int(__import__("os").path.getsize(utxo_jsonl_path)),
+        },
+    },
+    "post_processing": {
+        "tooling_git_commit": tooling_commit,
+    },
     "export_result": export_result,
     "txoutsetinfo": txoutsetinfo,
 }
@@ -604,9 +627,13 @@ metadata = {
         "archive_name": archive_name,
         "archive_sha256": archive_sha256.upper(),
     },
-    "code_provenance": {
+    "raw_export": {
+        "audit_binary_git_commit": export_audit_binary_commit,
+        "utxo_jsonl_sha256": sha256_file(utxo_jsonl_path),
+        "utxo_jsonl_path": utxo_jsonl_path,
         "crown_audit_binary_version": binary_version,
-        "crown_audit_binary_git_commit": tooling_commit,
+    },
+    "post_processing": {
         "tooling_git_commit": tooling_commit,
     },
     "generation": {
