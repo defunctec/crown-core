@@ -601,6 +601,15 @@ def output_summary(vout):
         'req_sigs': script.get('reqSigs'),
     }
 
+def is_null_prevout(vin_item):
+    txid = vin_item.get('txid')
+    vout = vin_item.get('vout')
+    return (
+        isinstance(txid, str)
+        and txid == ('0' * 64)
+        and vout in (-1, 4294967295)
+    )
+
 def classify_tx(decoded, tx_index, proof_type):
     vin = decoded.get('vin', [])
     vout = decoded.get('vout', [])
@@ -611,7 +620,8 @@ def classify_tx(decoded, tx_index, proof_type):
         and len(vin) == 1
         and len(vout) == 1
         and isinstance(vin[0], dict)
-        and 'coinbase' in vin[0]
+        and 'coinbase' not in vin[0]
+        and is_null_prevout(vin[0])
     )
     vin_outpoints = []
     for item in vin:
@@ -1006,18 +1016,30 @@ non_active_prev_hashes = {rec['prev'] for rec in recent_non_active.values() if r
 rpc_cache = {}
 def rpc_block(block_hash):
     if block_hash not in rpc_cache:
-        rpc_cache[block_hash] = rpc('getblock', block_hash)
+        try:
+            rpc_cache[block_hash] = rpc('getblock', block_hash)
+        except Exception:
+            rpc_cache[block_hash] = None
     return rpc_cache[block_hash]
 
 def enrich_record(record):
     block = rpc_block(record['hash'])
     enriched = dict(record)
-    enriched.update({
-        'height': block.get('height'),
-        'chainwork': block.get('chainwork'),
-        'proof_type': block.get('proof_type'),
-        'confirmations': block.get('confirmations'),
-    })
+    if block is not None:
+        enriched.update({
+            'height': block.get('height'),
+            'chainwork': block.get('chainwork'),
+            'proof_type': block.get('proof_type'),
+            'confirmations': block.get('confirmations'),
+        })
+    else:
+        enriched.update({
+            'height': None,
+            'chainwork': None,
+            'proof_type': None,
+            'confirmations': None,
+            'rpc_unavailable': True,
+        })
     return enriched
 
 def resolve_branch(tip_record):
@@ -1038,9 +1060,8 @@ def resolve_branch(tip_record):
         if prev_hash in recent_non_active:
             current = recent_non_active[prev_hash]
             continue
-        try:
-            fallback = rpc_block(prev_hash)
-        except Exception:
+        fallback = rpc_block(prev_hash)
+        if fallback is None:
             break
         fallback_record = {
             'hash': fallback.get('hash'),
