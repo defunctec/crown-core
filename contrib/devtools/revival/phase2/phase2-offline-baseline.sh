@@ -238,21 +238,36 @@ def block_bundle(block_hash, tip_status=None):
         'pos_mnpos_metadata': pos_meta,
     }, b
 
+def as_int(value, default=0):
+    try:
+        return int(value)
+    except Exception:
+        return default
+
+FORK_PROXIMITY_WINDOW = 32
+FORK_SELECTION_TIEBREAK = 'nearest-height-then-longest-branchlen'
+MAX_ANCESTRY_STEPS = 1000000
+
 active = [t for t in tips if t.get('status') == 'active']
 valid_forks = [t for t in tips if t.get('status') == 'valid-fork']
-best_height = max((int(t.get('height', -1)) for t in active), default=-1)
-near_best = [t for t in tips if t.get('status') in ('active', 'valid-fork') and abs(int(t.get('height', -1)) - best_height) <= 32]
+best_height = max((as_int(t.get('height', -1), -1) for t in active), default=-1)
+near_best = [t for t in tips if t.get('status') in ('active', 'valid-fork') and abs(as_int(t.get('height', -1), -1) - best_height) <= FORK_PROXIMITY_WINDOW]
 
-selected_active = max(active, key=lambda t: int(t.get('height', -1))) if active else None
+selected_active = max(active, key=lambda t: as_int(t.get('height', -1), -1)) if active else None
 selected_fork = None
 if valid_forks:
-    selected_fork = sorted(valid_forks, key=lambda t: (abs(int(t.get('height', -1)) - best_height), -int(t.get('branchlen', 0))))[0]
+    selected_fork = sorted(valid_forks, key=lambda t: (abs(as_int(t.get('height', -1), -1) - best_height), -as_int(t.get('branchlen', 0), 0)))[0]
 
 analysis = {
     'generated_at_utc': datetime.datetime.utcnow().isoformat() + 'Z',
     'source': {
         'chaintips_file': chaintips_path,
         'best_height_from_active_tip': best_height,
+        'selection_policy': {
+            'near_best_window_blocks': FORK_PROXIMITY_WINDOW,
+            'valid_fork_tiebreak': FORK_SELECTION_TIEBREAK,
+            'max_ancestry_steps': MAX_ANCESTRY_STEPS,
+        },
     },
     'tips': {
         'active': active,
@@ -267,6 +282,10 @@ analysis = {
         'archived_node_selected_active_branch': True,
         'strictly_greater_chainwork_branch': None,
     },
+    'ancestry_resolution': {
+        'resolved': False,
+        'error': None,
+    },
     'divergent_blocks_export_dir': blocks_dir,
     'divergent_block_exports': {'active': [], 'competing': []},
 }
@@ -280,34 +299,50 @@ if selected_active and selected_fork:
     active_chain = []
     fork_chain = []
 
+    ancestry_error = None
+    steps = 0
     while a['hash'] != f['hash']:
+        steps += 1
+        if steps > MAX_ANCESTRY_STEPS:
+            ancestry_error = f'ancestry walk exceeded max steps ({MAX_ANCESTRY_STEPS}) before finding common ancestor'
+            break
         if a['height'] > f['height']:
             active_chain.append(dict(a))
+            if not a.get('prev'):
+                ancestry_error = 'active branch reached block without previousblockhash before common ancestor'
+                break
             hb = rpc('getblock', a['prev'])
             a = {'hash': hb['hash'], 'height': int(hb['height']), 'prev': hb.get('previousblockhash')}
         elif f['height'] > a['height']:
             fork_chain.append(dict(f))
+            if not f.get('prev'):
+                ancestry_error = 'competing branch reached block without previousblockhash before common ancestor'
+                break
             hb = rpc('getblock', f['prev'])
             f = {'hash': hb['hash'], 'height': int(hb['height']), 'prev': hb.get('previousblockhash')}
         else:
             active_chain.append(dict(a))
             fork_chain.append(dict(f))
+            if not a.get('prev') or not f.get('prev'):
+                ancestry_error = 'one branch reached block without previousblockhash before common ancestor at equal height'
+                break
             ab = rpc('getblock', a['prev'])
             fb = rpc('getblock', f['prev'])
             a = {'hash': ab['hash'], 'height': int(ab['height']), 'prev': ab.get('previousblockhash')}
             f = {'hash': fb['hash'], 'height': int(fb['height']), 'prev': fb.get('previousblockhash')}
 
-    common_ancestor = {'height': a['height'], 'hash': a['hash']}
-    first_div_active = active_chain[-1] if active_chain else None
-    first_div_fork = fork_chain[-1] if fork_chain else None
+    if ancestry_error is None:
+        common_ancestor = {'height': a['height'], 'hash': a['hash']}
+        first_div_active = active_chain[-1] if active_chain else None
+        first_div_fork = fork_chain[-1] if fork_chain else None
 
-    for side_name, chain in (('active', active_chain), ('competing', fork_chain)):
-        for node in reversed(chain):
-            full = rpc('getblock', node['hash'])
-            out_file = os.path.join(blocks_dir, f'{side_name}-h{full["height"]}-{full["hash"]}.json')
-            with open(out_file, 'w', encoding='utf-8') as fp:
-                json.dump(full, fp, indent=2)
-            analysis['divergent_block_exports'][side_name].append(out_file)
+        for side_name, chain in (('active', active_chain), ('competing', fork_chain)):
+            for node in reversed(chain):
+                full = rpc('getblock', node['hash'])
+                out_file = os.path.join(blocks_dir, f'{side_name}-h{full["height"]}-{full["hash"]}.json')
+                with open(out_file, 'w', encoding='utf-8') as fp:
+                    json.dump(full, fp, indent=2)
+                analysis['divergent_block_exports'][side_name].append(out_file)
 
     aw = int(active_summary.get('chainwork') or '0', 16)
     fw = int(fork_summary.get('chainwork') or '0', 16)
@@ -317,19 +352,23 @@ if selected_active and selected_fork:
         'active_tip': active_summary,
         'competing_tip': fork_summary,
     }
-    analysis['common_ancestor'] = common_ancestor
-    analysis['first_divergent'] = {
-        'active_branch': first_div_active,
-        'competing_branch': first_div_fork,
-    }
-    analysis['branch_metrics'] = {
-        'active_branch_divergent_length': len(active_chain),
-        'competing_branch_divergent_length': len(fork_chain),
-        'active_tip_chainwork': active_summary.get('chainwork'),
-        'competing_tip_chainwork': fork_summary.get('chainwork'),
-        'active_tip_height': active_summary.get('height'),
-        'competing_tip_height': fork_summary.get('height'),
-    }
+    if ancestry_error is None:
+        analysis['common_ancestor'] = common_ancestor
+        analysis['first_divergent'] = {
+            'active_branch': first_div_active,
+            'competing_branch': first_div_fork,
+        }
+        analysis['branch_metrics'] = {
+            'active_branch_divergent_length': len(active_chain),
+            'competing_branch_divergent_length': len(fork_chain),
+            'active_tip_chainwork': active_summary.get('chainwork'),
+            'competing_tip_chainwork': fork_summary.get('chainwork'),
+            'active_tip_height': active_summary.get('height'),
+            'competing_tip_height': fork_summary.get('height'),
+        }
+        analysis['ancestry_resolution'] = {'resolved': True, 'error': None}
+    else:
+        analysis['ancestry_resolution'] = {'resolved': False, 'error': ancestry_error}
     analysis['selection']['strictly_greater_chainwork_branch'] = stronger if stronger != 'equal' else None
 
 with open(out_path, 'w', encoding='utf-8') as fp:
