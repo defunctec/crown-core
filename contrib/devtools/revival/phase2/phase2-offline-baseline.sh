@@ -19,6 +19,7 @@ USAGE
 DATADIR=""
 OUTDIR=""
 ARCHIVE_NAME="crown-old-chain.7z"
+EXPECTED_MAINNET_GENESIS="0000000085370d5e122f64f4ab19c68614ff3df78c8d13cb814fd7e69a1dc6da"
 ARCHIVE_SHA256="56EFDB665EF04F6AC21D218388A92471DBCB827332DCD6501872D319998FC3D0"
 
 while [ $# -gt 0 ]; do
@@ -70,15 +71,19 @@ cleanup() {
 trap cleanup EXIT
 
 log "Starting offline baseline against disposable working copy: $DATADIR"
-start_crownd "$DATADIR" -testnet=0 -regtest=0 -devnet=0 -listen=0 -dnsseed=0 -dns=0 -discover=0 -upnp=0 -maxconnections=0 -onlynet=ipv4 -rpcbind=127.0.0.1 -rpcallowip=127.0.0.1
+start_crownd "$DATADIR" -testnet=0 -regtest=0 -listen=0 -dnsseed=0 -dns=0 -discover=0 -upnp=0 -maxconnections=0 -onlynet=ipv4 -rpcbind=127.0.0.1 -rpcallowip=127.0.0.1
 wait_rpc_ready "$DATADIR" 240 || die "crownd RPC did not become ready for offline baseline"
+
+GENESIS_HASH="$(rpc "$DATADIR" getblockhash 0)"
+CHAIN_NAME="$(rpc "$DATADIR" getblockchaininfo | python3 -c 'import json,sys; print(json.load(sys.stdin).get("chain",""))')"
+BEST_HASH="$(rpc "$DATADIR" getbestblockhash)"
+HEIGHT="$(rpc "$DATADIR" getblockcount)"
+[ "$CHAIN_NAME" = "main" ] || die "Refusing offline baseline evidence collection: expected chain=main but got chain=${CHAIN_NAME:-UNKNOWN} (height=$HEIGHT, best_hash=$BEST_HASH, genesis=$GENESIS_HASH)"
+[ "$GENESIS_HASH" = "$EXPECTED_MAINNET_GENESIS" ] || die "Refusing offline baseline evidence collection: expected genesis=$EXPECTED_MAINNET_GENESIS but got genesis=$GENESIS_HASH (chain=${CHAIN_NAME:-UNKNOWN}, height=$HEIGHT, best_hash=$BEST_HASH)"
 
 rpc "$DATADIR" getblockchaininfo > "$OUTDIR/blockchaininfo.json"
 rpc "$DATADIR" getnetworkinfo > "$OUTDIR/networkinfo.json"
 rpc "$DATADIR" getchaintips > "$OUTDIR/chaintips.json"
-BEST_HASH="$(rpc "$DATADIR" getbestblockhash)"
-HEIGHT="$(rpc "$DATADIR" getblockcount)"
-GENESIS_HASH="$(rpc "$DATADIR" getblockhash 0)"
 rpc "$DATADIR" getblock "$BEST_HASH" > "$OUTDIR/tip-block.json"
 rpc "$DATADIR" getblock "$GENESIS_HASH" > "$OUTDIR/genesis-block.json"
 
