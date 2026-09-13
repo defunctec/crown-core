@@ -68,6 +68,10 @@ STABILITY_WINDOW_JSON="$OUTDIR/phase2-stability-window-analysis.json"
 FORK_BLOCKS_DIR="$OUTDIR/phase2-fork-blocks"
 STABILITY_ANCHOR_UTC="2025-08-19T23:59:59Z"
 STABILITY_LOOKBACK_DAYS="90"
+PROVISIONAL_SNAPSHOT_CUTOFF_UTC="2025-07-01T23:59:59Z"
+PROVISIONAL_SNAPSHOT_HEIGHT="5420279"
+PROVISIONAL_SNAPSHOT_HASH="8894040303b50f6f6989b65b0402bc09507a63736c3963657239cbaf6c1316ed"
+PROVISIONAL_SNAPSHOT_TIMESTAMP_UTC="2025-07-01T23:59:24Z"
 
 cleanup() {
   stop_crownd "$DATADIR"
@@ -947,7 +951,7 @@ with open(out_path, 'w', encoding='utf-8') as f:
 PY
 fi
 
-python3 - "$CROWNCLI_BIN" "$DATADIR" "$(phase2_rpc_port "$DATADIR")" "$(phase2_rpc_user "$DATADIR")" "$(phase2_rpc_password "$DATADIR")" "$DATADIR/blocks" "$BEST_HASH" "$STABILITY_WINDOW_JSON" "$STABILITY_ANCHOR_UTC" "$STABILITY_LOOKBACK_DAYS" <<'PY'
+python3 - "$CROWNCLI_BIN" "$DATADIR" "$(phase2_rpc_port "$DATADIR")" "$(phase2_rpc_user "$DATADIR")" "$(phase2_rpc_password "$DATADIR")" "$DATADIR/blocks" "$BEST_HASH" "$STABILITY_WINDOW_JSON" "$STABILITY_ANCHOR_UTC" "$STABILITY_LOOKBACK_DAYS" "$PROVISIONAL_SNAPSHOT_CUTOFF_UTC" "$PROVISIONAL_SNAPSHOT_HEIGHT" "$PROVISIONAL_SNAPSHOT_HASH" "$PROVISIONAL_SNAPSHOT_TIMESTAMP_UTC" <<'PY'
 import collections
 import datetime
 import glob
@@ -962,8 +966,10 @@ import sys
 (
     crowncli, datadir, rpc_port, rpc_user, rpc_password,
     blocks_dir, best_hash, out_path, anchor_utc, lookback_days,
-) = sys.argv[1:11]
+    provisional_cutoff_utc, provisional_height, provisional_hash, provisional_timestamp_utc,
+) = sys.argv[1:15]
 lookback_days = int(lookback_days)
+provisional_height = int(provisional_height)
 anchor_dt = datetime.datetime.strptime(anchor_utc, '%Y-%m-%dT%H:%M:%SZ')
 anchor_ts = int(anchor_dt.replace(tzinfo=datetime.timezone.utc).timestamp())
 window_seconds = lookback_days * 24 * 60 * 60
@@ -1249,9 +1255,12 @@ def candidate_at(label, target_utc):
         reason = 'Nearby competing branch activity or long-gap anomalies are present in the surrounding 7-day window.'
     return {
         'label': label,
+        'selection_rule': 'last active-chain block at or before requested_cutoff_utc',
+        'requested_cutoff_utc': target_utc,
         'height': block.get('height'),
         'hash': block.get('hash'),
         'timestamp_utc': block.get('time_iso'),
+        'resolved_block_precedes_cutoff_by_seconds': target_ts - block.get('time'),
         'chainwork': block.get('chainwork'),
         'lies_on_uncontested_active_ancestry': uncontested,
         'nearby_competing_forks': [
@@ -1273,8 +1282,8 @@ def candidate_at(label, target_utc):
     }
 
 required_candidates = [
-    candidate_at('2025-08-01', '2025-08-01T23:59:59Z'),
-    candidate_at('2025-07-01', '2025-07-01T23:59:59Z'),
+    candidate_at('last_active_block_at_or_before_2025-08-01T23:59:59Z', '2025-08-01T23:59:59Z'),
+    candidate_at('last_active_block_at_or_before_2025-07-01T23:59:59Z', '2025-07-01T23:59:59Z'),
 ]
 required_candidates = [c for c in required_candidates if c is not None]
 
@@ -1294,9 +1303,56 @@ if anomaly_timestamps:
         else:
             break
 if suggested_candidate is not None:
-    auto_candidate = candidate_at('latest_pre_instability', suggested_candidate['time_iso'])
+    auto_candidate = candidate_at('last_active_block_before_detected_instability', suggested_candidate['time_iso'])
     if auto_candidate and auto_candidate['hash'] not in {c['hash'] for c in required_candidates}:
         required_candidates.append(auto_candidate)
+
+provisional_snapshot_candidate = candidate_at('provisional_legacy_holder_revival_snapshot', provisional_cutoff_utc)
+provisional_snapshot_decision = {
+    'status': 'fixed',
+    'purpose': 'provisional economic/holder entitlement reference point only',
+    'selection_rule': 'last active-chain block at or before 2025-07-01T23:59:59Z',
+    'resolved_block': {
+        'height': provisional_height,
+        'hash': provisional_hash,
+        'timestamp_utc': provisional_timestamp_utc,
+        'chainwork': provisional_snapshot_candidate.get('chainwork') if provisional_snapshot_candidate else None,
+    },
+    'decision_reasons': [
+        'lies on uncontested active ancestry',
+        'no detected competing forks in the surrounding audit window',
+        'no nearby long-block-gap anomaly',
+        'active-chain production around this period was normal',
+        'materially predates the late-July/August degradation, prolonged stalls, terminal equal-chainwork fork, and later emergency stakepointer recovery work',
+    ],
+    'explicit_non_goals': [
+        'does not truncate historical Crown chain recovery at this height',
+        'does not declare later historical blocks invalid',
+        'does not choose either terminal August fork as canonical',
+        'does not automatically determine which addresses or UTXOs are eligible',
+    ],
+    'follow_on_phases': {
+        'phase2b': 'Reconstruct the UTXO/holder distribution at exactly height 5420279.',
+        'phase2c': [
+            'masternode/systemnode collateral',
+            'treasury/project-controlled funds',
+            'known exchange/custody holdings',
+            'wrapped-CRW reserve/custody UTXOs',
+            'other special categories needed to prevent double entitlement',
+        ],
+    },
+    'tooling_note': 'Snapshot candidate records now carry both requested_cutoff_utc and resolved block timestamp so a nominal date label cannot be mistaken for exact same-day block production.',
+}
+if provisional_snapshot_candidate is not None:
+    provisional_snapshot_decision['candidate_evidence'] = provisional_snapshot_candidate
+    provisional_snapshot_decision['resolved_block_matches_expected'] = (
+        provisional_snapshot_candidate.get('height') == provisional_height
+        and provisional_snapshot_candidate.get('hash') == provisional_hash
+        and provisional_snapshot_candidate.get('timestamp_utc') == provisional_timestamp_utc
+    )
+else:
+    provisional_snapshot_decision['candidate_evidence'] = None
+    provisional_snapshot_decision['resolved_block_matches_expected'] = False
 
 analysis = {
     'generated_at_utc': datetime.datetime.utcnow().isoformat() + 'Z',
@@ -1339,6 +1395,7 @@ analysis = {
         'Terminal competing branches remain PoS and should be cross-referenced with phase2-terminal-fork-forensics.json for stake-source outpoint differences.',
         'This windowed analysis focuses on fork timing, depth, and active-chain block cadence rather than a full stakepointer decode of every recent block.',
     ],
+    'provisional_revival_snapshot_decision': provisional_snapshot_decision,
     'snapshot_candidates': required_candidates,
     'scan_diagnostics': {
         'recent_header_count': len(recent_headers),
@@ -1348,6 +1405,7 @@ analysis = {
     'limitations': [
         'Competing-branch detection in this artifact is derived from recent block-file headers plus RPC height lookups; it does not treat any external network as canonical.',
         'Historical reorgs are reconstructable only to the extent that competing blocks remain present in the preserved archive.',
+        'A requested calendar cutoff may resolve to an earlier block when the chain had already stalled; use requested_cutoff_utc together with timestamp_utc when interpreting snapshot candidates.',
     ],
 }
 
@@ -1374,6 +1432,7 @@ block_inventory=json.load(open(f"{outdir}/block-file-inventory.json"))
 expected=json.load(open(f"{outdir}/expected-mainnet-params.json"))
 checkpoint_result=json.load(open(f"{outdir}/phase2-checkpoint-verification.json"))
 verifychain_json=json.load(open(f"{outdir}/verifychain.json"))
+stability_window=json.load(open(f"{outdir}/phase2-stability-window-analysis.json"))
 
 if txoutset_available:
     txoutset=json.load(open(f"{outdir}/txoutsetinfo.json"))
@@ -1471,8 +1530,12 @@ baseline={
         'terminal_fork_forensics_file': f"{outdir}/phase2-terminal-fork-forensics.json",
         'stability_window_file': f"{outdir}/phase2-stability-window-analysis.json",
     },
+    'phase2a_project_decisions': {
+        'provisional_revival_snapshot': stability_window.get('provisional_revival_snapshot_decision'),
+    },
     'limitations': [
         'This script does not calculate historical issuance; it records reproducible baseline inputs for later Phase 2 calculations.',
+        'The provisional snapshot decision defines the economic reference point only; Phase 2B/2C still determine distribution and exclusions at that exact height.',
         'Pruned/completeness status is inferred from blk file continuity and may require manual confirmation.',
     ],
 }

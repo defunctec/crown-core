@@ -92,6 +92,37 @@ OFFLINE output directory:
 - active-chain block cadence and long-gap/stall candidates
 - competing branch activity, fork depths, and reconstructable reorg indicators
 - snapshot candidates around `2025-08-01`, `2025-07-01`, and the latest pre-instability point suggested by the preserved archive evidence
+- for each candidate, both the requested cutoff UTC and the resolved last-active-chain block at or before that cutoff, so stalled periods do not produce misleading same-day labels
+
+## Provisional revival snapshot decision
+
+The provisional legacy-holder revival snapshot is fixed at:
+
+- date rule: **last active-chain block at or before `2025-07-01T23:59:59Z`**
+- resolved block height: **`5420279`**
+- resolved block hash: **`8894040303b50f6f6989b65b0402bc09507a63736c3963657239cbaf6c1316ed`**
+- resolved block timestamp: **`2025-07-01T23:59:24Z`**
+
+Reason:
+
+- lies on uncontested active ancestry
+- no detected competing forks in the surrounding audit window
+- no nearby long-block-gap anomaly
+- active-chain production around this period was normal
+- materially predates the late-July/August degradation, prolonged stalls, terminal equal-chainwork fork, and later emergency stakepointer recovery work
+
+Important distinction:
+
+- this snapshot defines the **provisional economic/holder entitlement reference point only**
+- it does **not** truncate historical chain recovery at that height
+- it does **not** declare later historical blocks invalid
+- it does **not** choose either terminal August fork as canonical
+- it does **not** by itself determine eligible addresses or UTXOs
+
+Follow-on scope:
+
+- **Phase 2B** reconstructs the UTXO/holder distribution at exactly height `5420279`
+- **Phase 2C** classifies masternode/systemnode collateral, treasury/project-controlled funds, known exchange/custody holdings, wrapped-CRW reserve/custody UTXOs, and other special categories needed to prevent double entitlement
 
 SYNC output directory:
 - `phase2-sync-result.json`
