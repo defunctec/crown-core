@@ -87,6 +87,7 @@ OFFLINE output directory:
 - staking source outpoints and referenced stake-source transactions/vouts
 - raw block-signature and serialized stakepointer fields not exposed by `getblock`
 - reward/payment structure comparisons between the competing branches
+- source-backed closeout findings for ordinary stakepointer validity, systemnode payment enforcement behavior, and equal-chainwork branch selection
 
 `phase2-stability-window-analysis.json` summarizes the 90 days before `2025-08-19` and reports:
 - active-chain block cadence and long-gap/stall candidates
@@ -123,6 +124,19 @@ Follow-on scope:
 
 - **Phase 2B** reconstructs the UTXO/holder distribution at exactly height `5420279`
 - **Phase 2C** classifies masternode/systemnode collateral, treasury/project-controlled funds, known exchange/custody holdings, wrapped-CRW reserve/custody UTXOs, and other special categories needed to prevent double entitlement
+
+## Phase 2A final findings
+
+- **Canonical official historical source baseline:** `3050c1f970e6dc4713c41a88f80638c597af33e9` / Crown Core `v0.14.0.4` remains the historical code baseline for analysis.
+- **Preserved archive provenance:** the archive is a local preserved node state used as evidence, not an authority above production source rules.
+- **Healthy chain through the provisional July 1 snapshot:** the selected holder-reference block at height `5420279` lies on uncontested active ancestry before the later instability window.
+- **Late-July/August operational degradation:** the preserved archive shows later stalls, instability, and a terminal two-block fork near the August endpoint.
+- **Unresolved terminal equal-chainwork fork:** the terminal branch pair has equal accumulated chainwork, so the archive's current `active` label proves only what this preserved node last persisted as best, not an objective fork winner.
+- **Ordinary stakepointer validity:** mainnet source sets `ValidStakePointerDuration()` to `4320` and `MaxReorganizationDepth()` to `100`, so ordinary stakepointer ages are valid on an inclusive `100..4320` block window. The recorded terminal ages (`1576`, `1671`, `101`, `101`) all satisfy that window.
+- **Systemnode payment difference:** PoS-era source expects normal non-superblock templates to place masternode payment in `coinbase.vout[1]` and systemnode payment in `coinbase.vout[2]` when a payee is known, but consensus rejection of a missing systemnode payment depends on sync completion, winner-vote availability, stall status, and `SPORK_14_SYSTEMNODE_PAYMENT_ENFORCEMENT`. The payment mismatch therefore does not by itself choose a fork winner or prove the competing branch invalid.
+- **Later emergency stakepointer code history:** later `v0.14.0.7` branch history added emergency stakepointer options, but those later recovery changes do not change the settled Phase 2A snapshot decision.
+- **Provisional holder snapshot remains fixed:** height `5420279`, hash `8894040303b50f6f6989b65b0402bc09507a63736c3963657239cbaf6c1316ed`, timestamp `2025-07-01T23:59:24Z`.
+- **Terminal-fork findings do not affect entitlement height:** Phase 2A keeps the provisional holder reference point at `5420279`; resolving the later equal-work terminal fork is not required to begin holder reconstruction at that earlier height.
 
 SYNC output directory:
 - `phase2-sync-result.json`

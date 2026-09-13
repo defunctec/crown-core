@@ -456,6 +456,7 @@ import json
 import struct
 import subprocess
 import sys
+from decimal import Decimal
 
 crowncli, datadir, rpc_port, rpc_user, rpc_password, fork_analysis_path, out_path = sys.argv[1:8]
 fork_analysis = json.load(open(fork_analysis_path, encoding='utf-8'))
@@ -696,6 +697,31 @@ def nonempty_payment(outputs, index):
         return None
     return out
 
+def decimal_str(value):
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return str(value)
+    try:
+        return format(Decimal(str(value)), 'f')
+    except Exception:
+        return None
+
+def total_created(block):
+    total = Decimal('0')
+    saw_value = False
+    for tx in block.get('transactions', []):
+        if tx.get('is_coinbase') or tx.get('is_coinstake'):
+            for out in tx.get('outputs', []):
+                value = out.get('value')
+                if value is None:
+                    continue
+                total += Decimal(str(value))
+                saw_value = True
+    if not saw_value:
+        return None
+    return format(total, 'f')
+
 def tx_lookup_from_block(block_hash):
     parsed = parse_block(rpc('getblock', block_hash, False))
     mapping = {}
@@ -851,6 +877,177 @@ for height in sorted(set(active_by_height) & set(competing_by_height)):
         'active_treasury_or_budget_payments': active_block.get('treasury_or_budget_payments'),
         'competing_treasury_or_budget_payments': competing_block.get('treasury_or_budget_payments'),
     })
+
+ordinary_max_duration = 4320
+ordinary_max_reorg_depth = 100
+ordinary_min_age = ordinary_max_reorg_depth
+ordinary_max_age = ordinary_max_duration
+
+def stakepointer_validity(block):
+    source = block.get('stake_source') or {}
+    height = block.get('height')
+    age = source.get('age_blocks')
+    pointer_height = source.get('pointer_block_height')
+    outpoint = source.get('stakepointer_outpoint')
+    if not isinstance(height, int) or not isinstance(age, int) or not isinstance(pointer_height, int):
+        return {
+            'height': height,
+            'hash': block.get('hash'),
+            'stakepointer_outpoint': outpoint,
+            'pointer_block_height': pointer_height,
+            'pointer_age_blocks': age,
+            'ordinary_rule_verdict': 'INDETERMINATE',
+            'reason': 'Archive data for block height or stakepointer age was incomplete.',
+        }
+    min_valid_pointer_height = height - ordinary_max_duration
+    max_valid_pointer_height = height - ordinary_max_reorg_depth
+    age_ok = ordinary_min_age <= age <= ordinary_max_age
+    return {
+        'height': height,
+        'hash': block.get('hash'),
+        'stakepointer_outpoint': outpoint,
+        'pointer_block_height': pointer_height,
+        'pointer_age_blocks': age,
+        'valid_pointer_height_range_inclusive': {
+            'min_height': min_valid_pointer_height,
+            'max_height': max_valid_pointer_height,
+        },
+        'ordinary_rule_verdict': 'VALID under ordinary rules' if age_ok else 'INVALID under ordinary rules',
+        'reason': (
+            f'Pointer age {age} is within the ordinary inclusive window [{ordinary_min_age}, {ordinary_max_age}] blocks '
+            f'because CheckBlockProofPointer rejects only heights < block_height-{ordinary_max_duration} or > block_height-{ordinary_max_reorg_depth}.'
+            if age_ok else
+            f'Pointer age {age} falls outside the ordinary inclusive window [{ordinary_min_age}, {ordinary_max_age}] blocks.'
+        ),
+    }
+
+def payment_value(payment):
+    if not payment:
+        return None
+    return decimal_str(payment.get('value'))
+
+def systemnode_payment_comparison(height, active_block, competing_block):
+    active_total = total_created(active_block)
+    competing_total = total_created(competing_block)
+    return {
+        'height': height,
+        'expected_non_superblock_pos_layout': {
+            'coinbase_vout_0': '0 CRW',
+            'coinbase_vout_1_masternode_share': '37% of block value',
+            'coinbase_vout_2_systemnode_share': '8% of block value',
+            'coinstake_output_0': 'remaining 55% of block value after node payouts',
+        },
+        'observed_active_branch': {
+            'hash': active_block.get('hash'),
+            'masternode_payment': payment_value(active_block.get('masternode_payment')),
+            'systemnode_payment': payment_value(active_block.get('systemnode_payment')),
+            'coinstake_reward': decimal_str((active_block.get('coinstake_reward_destination') or {}).get('value')),
+            'total_created': active_total,
+        },
+        'observed_competing_branch': {
+            'hash': competing_block.get('hash'),
+            'masternode_payment': payment_value(competing_block.get('masternode_payment')),
+            'systemnode_payment': payment_value(competing_block.get('systemnode_payment')),
+            'coinstake_reward': decimal_str((competing_block.get('coinstake_reward_destination') or {}).get('value')),
+            'total_created': competing_total,
+        },
+        'economic_difference': {
+            'total_created_differs': active_total != competing_total,
+            'notes': 'Absent systemnode output shifts 0.2 CRW from coinbase.vout[2] back into the coinstake reward, but does not change total block creation.'
+                if active_total == competing_total and active_total is not None else
+                'Unable to confirm equal total creation from the archived block payloads alone.',
+        },
+    }
+
+analysis['phase2a_closeout_findings'] = {
+    'stakepointer_rules_from_source': {
+        'mainnet_valid_stake_pointer_duration': ordinary_max_duration,
+        'mainnet_max_reorganization_depth': ordinary_max_reorg_depth,
+        'inclusive_age_window_blocks': {
+            'minimum_age': ordinary_min_age,
+            'maximum_age': ordinary_max_age,
+        },
+        'boundary_checks': {
+            'too_old_rejects_when': 'pointer_height < block_height - ValidStakePointerDuration()',
+            'too_recent_rejects_when': 'pointer_height > block_height - MaxReorganizationDepth()',
+            'minimum_age_is_inclusive': 'age 100 is allowed; only ages < 100 are too recent',
+            'maximum_age_is_inclusive': 'age 4320 is allowed; only ages > 4320 are too old',
+        },
+        'other_ordinary_rules_relevant_here': [
+            'The referenced pointer block hash must exist in mapBlockIndex.',
+            'The referenced pointer block must be in chainActive at validation time.',
+            'Within 24 hours of adjusted time, stake pointers from budget payment blocks are rejected.',
+            'A stakepointer outpoint already used earlier on the same chain is rejected.',
+            'The referenced outpoint must be slot 1 or slot 2, matching a masternode or systemnode reward output.',
+            'The block signature and subsequent proof-of-stake verification must still succeed.',
+        ],
+        'terminal_block_verdicts': {
+            side_name: [stakepointer_validity(block) for block in analysis['terminal_blocks'][side_name]]
+            for side_name in ('active', 'competing')
+        },
+        'archive_validity_note': 'For these four terminal blocks, the ordinary 100..4320 block age window does not itself imply rejection. Separately, the archive marks validity by reloading persisted block-index status from disk; startup restores nStatus from the block tree DB and chainActive from the coins DB without re-running CheckBlockProofPointer until later revalidation paths.',
+    },
+    'systemnode_payment_difference': {
+        'consensus_validity': [
+            'Systemnode payment checks are skipped entirely when systemnode sync is unfinished.',
+            'If no payee record exists for the height, the block is accepted.',
+            'If payee records exist but fewer than 6 signatures support a payee, the block is accepted.',
+            'If a required payee is known and the chain is stalled for more than ChainStallDuration(), the first resumed block is accepted even without that payment.',
+            'Only when the node is synced, a payee has at least 6 votes, the chain is not stalled, and SPORK_14_SYSTEMNODE_PAYMENT_ENFORCEMENT is active does a missing systemnode payment become consensus-invalid.',
+        ],
+        'block_template_creation': [
+            'With SPORK_4 active, miners call FillBlockPayee and SNFillBlockPayee for normal PoS blocks.',
+            'Systemnode block templates add coinbase.vout[2] only when a winner is found from winner votes or the local GetCurrentSystemNode fallback.',
+            'If a systemnode payee is found but the masternode slot is otherwise empty, slot 1 is filled with a zero-valued empty output before writing slot 2.',
+        ],
+        'service_node_state': [
+            'Winner selection depends on local systemnode winner votes and on the local enabled systemnode list used by GetCurrentSystemNode.',
+            'Different local systemnode list or winner-vote state can therefore change template construction even when the total block reward is unchanged.',
+        ],
+        'per_height': [
+            systemnode_payment_comparison(height, active_by_height[height], competing_by_height[height])
+            for height in sorted(set(active_by_height) & set(competing_by_height))
+        ],
+        'inference': [
+            'The competing blocks match the expected PoS-era 0.925 CRW masternode plus 0.2 CRW systemnode split.',
+            'The active blocks omit the 0.2 CRW systemnode output but keep the same total creation by leaving that value in the coinstake reward.',
+            'That difference is explainable by template/state divergence and does not by itself prove consensus invalidity, because source enforcement is conditional on sync state, winner-vote availability, stall state, and SPORK_14.',
+            'The preserved archive can therefore contain both branches as valid while still showing a reward-layout difference.',
+        ],
+    },
+    'equal_chainwork_selection': {
+        'comparator_from_source': {
+            'primary': 'greater nChainWork wins',
+            'secondary': 'greater nSequenceId wins (later received block)',
+            'tertiary': 'higher pointer address wins as a process-local tiebreak for loaded-from-disk blocks',
+        },
+        'applied_to_terminal_pair': {
+            'active_hash': selected.get('active_hash'),
+            'competing_hash': selected.get('competing_hash'),
+            'equal_chainwork': selected.get('same_chainwork'),
+            'sequence_id_used': True,
+            'block_hash_used': False,
+            'arrival_order_used': True,
+            'active_chain_membership_preferred': False,
+            'equal_work_branch_can_replace_active': True,
+            'restart_can_change_selection': True,
+            'persisted_state_that_matters': [
+                'The coins DB best-block hash is restored into chainActive on startup.',
+                'Block-index nStatus/nTx/HAVE_DATA state is reloaded from the block tree DB and determines candidate eligibility.',
+                'nSequenceId is memory-only and loaded blocks start with 0, so restart loses original arrival-order information.',
+            ],
+            'archive_active_designation_proves': [
+                'This preserved node last persisted the active branch tip as the coins DB best block.',
+                'Both terminal candidates remained present in the local block index with the statuses shown by getchaintips.',
+            ],
+            'archive_active_designation_does_not_prove': [
+                'It does not prove an objective network-wide winner between equal-chainwork branches.',
+                'It does not prove the competing branch was invalid.',
+                'It does not prove restart-independent branch selection, because equal-work ordering depends on non-persisted sequence IDs and then on a pointer-address tiebreak.',
+            ],
+        },
+    },
+}
 
 with open(out_path, 'w', encoding='utf-8') as fp:
     json.dump(analysis, fp, indent=2)
@@ -1448,6 +1645,7 @@ expected=json.load(open(f"{outdir}/expected-mainnet-params.json"))
 checkpoint_result=json.load(open(f"{outdir}/phase2-checkpoint-verification.json"))
 verifychain_json=json.load(open(f"{outdir}/verifychain.json"))
 stability_window=json.load(open(f"{outdir}/phase2-stability-window-analysis.json"))
+terminal_fork=json.load(open(f"{outdir}/phase2-terminal-fork-forensics.json"))
 
 if txoutset_available:
     txoutset=json.load(open(f"{outdir}/txoutsetinfo.json"))
@@ -1547,6 +1745,7 @@ baseline={
     },
     'phase2a_project_decisions': {
         'provisional_revival_snapshot': stability_window.get('provisional_revival_snapshot_decision'),
+        'terminal_fork_closeout_findings': terminal_fork.get('phase2a_closeout_findings'),
     },
     'limitations': [
         'This script does not calculate historical issuance; it records reproducible baseline inputs for later Phase 2 calculations.',
