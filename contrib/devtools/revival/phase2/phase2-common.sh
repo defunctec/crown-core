@@ -95,6 +95,21 @@ phase2_rpc_password_file() {
   printf '%s\n' "$datadir/phase2-rpc-password"
 }
 
+phase2_rpc_conf_file() {
+  local datadir="$1"
+  printf '%s\n' "$datadir/crown.conf"
+}
+
+phase2_rpc_conf_backup_file() {
+  local datadir="$1"
+  printf '%s\n' "$datadir/phase2-crown.conf.pre-phase2-rpc"
+}
+
+phase2_rpc_conf_state_file() {
+  local datadir="$1"
+  printf '%s\n' "$datadir/phase2-crown.conf.phase2-rpc-state"
+}
+
 ensure_phase2_rpc_credentials() {
   local datadir="$1"
   local user_file pass_file
@@ -114,6 +129,98 @@ print(secrets.token_hex(16))
 PY
   fi
   chmod 600 "$user_file" "$pass_file" >/dev/null 2>&1 || true
+}
+
+phase2_install_rpc_conf_credentials() {
+  local datadir="$1"
+  local conf backup state user pass
+  ensure_phase2_rpc_credentials "$datadir"
+  conf="$(phase2_rpc_conf_file "$datadir")"
+  backup="$(phase2_rpc_conf_backup_file "$datadir")"
+  state="$(phase2_rpc_conf_state_file "$datadir")"
+  user="$(phase2_rpc_user "$datadir")"
+  pass="$(phase2_rpc_password "$datadir")"
+
+  if [ ! -e "$state" ]; then
+    if [ -e "$conf" ]; then
+      cp -p "$conf" "$backup"
+      printf 'existing\n' > "$state"
+    else
+      printf 'created\n' > "$state"
+    fi
+    chmod 600 "$state" >/dev/null 2>&1 || true
+    [ ! -e "$backup" ] || chmod 600 "$backup" >/dev/null 2>&1 || true
+  fi
+
+  python3 - "$conf" "$user" "$pass" <<'PY'
+import os
+import sys
+
+conf_path, rpc_user, rpc_password = sys.argv[1:4]
+begin = "# BEGIN PHASE2 TEMP RPC CREDENTIALS"
+end = "# END PHASE2 TEMP RPC CREDENTIALS"
+
+existing = ""
+if os.path.exists(conf_path):
+    with open(conf_path, encoding="utf-8", errors="ignore") as fh:
+        existing = fh.read()
+
+lines = existing.splitlines()
+kept = []
+inside = False
+for line in lines:
+    if line == begin:
+        inside = True
+        continue
+    if line == end:
+        inside = False
+        continue
+    if not inside:
+        kept.append(line)
+
+while kept and kept[-1] == "":
+    kept.pop()
+
+block = [
+    begin,
+    f"rpcuser={rpc_user}",
+    f"rpcpassword={rpc_password}",
+    end,
+]
+
+result = "\n".join(kept + ([""] if kept else []) + block) + "\n"
+with open(conf_path, "w", encoding="utf-8") as fh:
+    fh.write(result)
+PY
+  chmod 600 "$conf" >/dev/null 2>&1 || true
+}
+
+phase2_remove_rpc_conf_credentials() {
+  local datadir="$1"
+  local conf backup state mode
+  conf="$(phase2_rpc_conf_file "$datadir")"
+  backup="$(phase2_rpc_conf_backup_file "$datadir")"
+  state="$(phase2_rpc_conf_state_file "$datadir")"
+  mode=""
+  if [ -f "$state" ]; then
+    mode="$(tr -d '\r\n' < "$state" || true)"
+  fi
+
+  case "$mode" in
+    existing)
+      if [ -f "$backup" ]; then
+        mv -f "$backup" "$conf"
+        chmod 600 "$conf" >/dev/null 2>&1 || true
+      fi
+      ;;
+    created)
+      rm -f "$conf"
+      ;;
+    *)
+      ;;
+  esac
+
+  rm -f "$backup" "$state" "$(phase2_rpc_user_file "$datadir")" "$(phase2_rpc_password_file "$datadir")"
 }
 
 phase2_rpc_user() {
@@ -248,13 +355,12 @@ PY
 start_crownd() {
   local datadir="$1"
   shift
-  local rpc_port started=0 rpc_user rpc_password
-  rpc_user="$(phase2_rpc_user "$datadir")"
-  rpc_password="$(phase2_rpc_password "$datadir")"
+  local rpc_port started=0
+  phase2_install_rpc_conf_credentials "$datadir"
   rm -f "$datadir/phase2-rpc-port"
   while IFS= read -r rpc_port; do
     [ -n "$rpc_port" ] || continue
-    if "$CROWND_BIN" -datadir="$datadir" -server=1 -daemon=1 -pid="$datadir/crownd.phase2.pid" -rpcport="$rpc_port" -rpcuser="$rpc_user" -rpcpassword="$rpc_password" "$@" >/dev/null 2>&1; then
+    if "$CROWND_BIN" -datadir="$datadir" -server=1 -daemon=1 -pid="$datadir/crownd.phase2.pid" -rpcport="$rpc_port" "$@" >/dev/null 2>&1; then
       local pid launched waited
       pid=""
       launched=0
@@ -282,7 +388,7 @@ start_crownd() {
         started=1
         break
       fi
-      "$CROWNCLI_BIN" -datadir="$datadir" -rpcconnect=127.0.0.1 -rpcport="$rpc_port" -rpcuser="$rpc_user" -rpcpassword="$rpc_password" stop >/dev/null 2>&1 || true
+      "$CROWNCLI_BIN" -datadir="$datadir" -rpcconnect=127.0.0.1 -rpcport="$rpc_port" stop >/dev/null 2>&1 || true
       if [ -n "$pid" ] && phase2_pid_matches_datadir "$pid" "$datadir"; then
         kill "$pid" >/dev/null 2>&1 || true
         local shutdown_wait=0
@@ -298,15 +404,16 @@ start_crownd() {
     fi
   done < <(phase2_rpc_port_candidates "$datadir")
 
-  [ "$started" -eq 1 ] || die "Failed to start crownd for datadir $datadir (no usable RPC port found, or daemon exited during launch probe)"
+  if [ "$started" -ne 1 ]; then
+    phase2_remove_rpc_conf_credentials "$datadir"
+    die "Failed to start crownd for datadir $datadir (no usable RPC port found, or daemon exited during launch probe)"
+  fi
 }
 
 wait_rpc_ready() {
   local datadir="$1"
   local max_wait="${2:-180}"
-  local waited=0 rpc_user rpc_password pid seen_process launch_grace
-  rpc_user="$(phase2_rpc_user "$datadir")"
-  rpc_password="$(phase2_rpc_password "$datadir")"
+  local waited=0 pid seen_process launch_grace
   pid=""
   seen_process=0
   launch_grace=15
@@ -315,7 +422,7 @@ wait_rpc_ready() {
     [ -n "$pid" ] && seen_process=1
   fi
   while [ "$waited" -lt "$max_wait" ]; do
-    if "$CROWNCLI_BIN" -datadir="$datadir" -rpcconnect=127.0.0.1 -rpcport="$(phase2_rpc_port "$datadir")" -rpcuser="$rpc_user" -rpcpassword="$rpc_password" getblockcount >/dev/null 2>&1; then
+    if "$CROWNCLI_BIN" -datadir="$datadir" -rpcconnect=127.0.0.1 -rpcport="$(phase2_rpc_port "$datadir")" getblockcount >/dev/null 2>&1; then
       return 0
     fi
     if [ -z "$pid" ]; then
@@ -362,7 +469,7 @@ wait_rpc_ready() {
 
 stop_crownd() {
   local datadir="$1"
-  local port pid waited rpc_user rpc_password port_known=0
+  local port pid waited port_known=0
   if [ -f "$datadir/phase2-rpc-port" ]; then
     port="$(tr -cd '0-9' < "$datadir/phase2-rpc-port" || true)"
     if [ -n "$port" ]; then
@@ -378,15 +485,13 @@ stop_crownd() {
   if [ "$port_known" -eq 0 ]; then
     port="$(phase2_default_rpc_port "$datadir")"
   fi
-  rpc_user="$(phase2_rpc_user "$datadir")"
-  rpc_password="$(phase2_rpc_password "$datadir")"
   pid=""
   if [ -f "$datadir/crownd.phase2.pid" ]; then
     pid="$(tr -cd '0-9' < "$datadir/crownd.phase2.pid" || true)"
   fi
 
   if [ "$port_known" -eq 1 ]; then
-    "$CROWNCLI_BIN" -datadir="$datadir" -rpcconnect=127.0.0.1 -rpcport="$port" -rpcuser="$rpc_user" -rpcpassword="$rpc_password" stop >/dev/null 2>&1 || true
+    "$CROWNCLI_BIN" -datadir="$datadir" -rpcconnect=127.0.0.1 -rpcport="$port" stop >/dev/null 2>&1 || true
   fi
 
   waited=0
@@ -403,7 +508,7 @@ stop_crownd() {
       pid_alive=1
     fi
     if [ "$port_known" -eq 1 ]; then
-      if "$CROWNCLI_BIN" -datadir="$datadir" -rpcconnect=127.0.0.1 -rpcport="$port" -rpcuser="$rpc_user" -rpcpassword="$rpc_password" getblockcount >/dev/null 2>&1; then
+      if "$CROWNCLI_BIN" -datadir="$datadir" -rpcconnect=127.0.0.1 -rpcport="$port" getblockcount >/dev/null 2>&1; then
         rpc_alive=1
       fi
     fi
@@ -431,7 +536,7 @@ stop_crownd() {
     pid_alive_final=1
   fi
   if [ "$port_known" -eq 1 ]; then
-    if "$CROWNCLI_BIN" -datadir="$datadir" -rpcconnect=127.0.0.1 -rpcport="$port" -rpcuser="$rpc_user" -rpcpassword="$rpc_password" getblockcount >/dev/null 2>&1; then
+    if "$CROWNCLI_BIN" -datadir="$datadir" -rpcconnect=127.0.0.1 -rpcport="$port" getblockcount >/dev/null 2>&1; then
       rpc_alive_final=1
     fi
   fi
@@ -440,12 +545,13 @@ stop_crownd() {
   fi
 
   rm -f "$datadir/crownd.phase2.pid" "$datadir/phase2-rpc-port"
+  phase2_remove_rpc_conf_credentials "$datadir"
 }
 
 rpc() {
   local datadir="$1"
   shift
-  "$CROWNCLI_BIN" -datadir="$datadir" -rpcconnect=127.0.0.1 -rpcport="$(phase2_rpc_port "$datadir")" -rpcuser="$(phase2_rpc_user "$datadir")" -rpcpassword="$(phase2_rpc_password "$datadir")" "$@"
+  "$CROWNCLI_BIN" -datadir="$datadir" -rpcconnect=127.0.0.1 -rpcport="$(phase2_rpc_port "$datadir")" "$@"
 }
 
 assert_rpc_not_ready() {
