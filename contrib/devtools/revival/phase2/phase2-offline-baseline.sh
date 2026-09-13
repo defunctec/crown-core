@@ -1322,7 +1322,7 @@ if provisional_snapshot_candidate is not None:
         'chainwork': provisional_snapshot_candidate.get('chainwork'),
     }
 provisional_snapshot_decision = {
-    'status': 'fixed',
+    'status': 'fixed' if provisional_snapshot_candidate is not None else 'unverified',
     'purpose': 'provisional economic/holder entitlement reference point only',
     'selection_rule': 'last active-chain block at or before 2025-07-01T23:59:59Z',
     'expected_resolved_block': {
@@ -1366,6 +1366,8 @@ if provisional_snapshot_candidate is not None:
 else:
     provisional_snapshot_decision['candidate_evidence'] = None
     provisional_snapshot_decision['resolved_block_matches_expected'] = False
+if not provisional_snapshot_decision['resolved_block_matches_expected']:
+    provisional_snapshot_decision['status'] = 'mismatch'
 
 analysis = {
     'generated_at_utc': datetime.datetime.utcnow().isoformat() + 'Z',
