@@ -1345,7 +1345,7 @@ provisional_snapshot_decision = {
         'does not automatically determine which addresses or UTXOs are eligible',
     ],
     'follow_on_phases': {
-        'phase2b': 'Reconstruct the UTXO/holder distribution at exactly height 5420279.',
+        'phase2b': f'Reconstruct the UTXO/holder distribution at exactly height {provisional_height}.',
         'phase2c': [
             'masternode/systemnode collateral',
             'treasury/project-controlled funds',
