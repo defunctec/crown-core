@@ -250,7 +250,9 @@ MAX_ANCESTRY_STEPS = 1000000
 
 active = [t for t in tips if t.get('status') == 'active']
 valid_forks = [t for t in tips if t.get('status') == 'valid-fork']
-best_height = max((as_int(t.get('height', -1), -1) for t in active), default=-1)
+best_height_from_active = max((as_int(t.get('height', -1), -1) for t in active), default=-1)
+best_height_overall = max((as_int(t.get('height', -1), -1) for t in tips), default=-1)
+best_height = best_height_from_active if best_height_from_active >= 0 else best_height_overall
 near_best = [t for t in tips if t.get('status') in ('active', 'valid-fork') and abs(as_int(t.get('height', -1), -1) - best_height) <= FORK_PROXIMITY_WINDOW]
 
 selected_active = max(active, key=lambda t: as_int(t.get('height', -1), -1)) if active else None
@@ -264,6 +266,7 @@ analysis = {
     'source': {
         'chaintips_file': chaintips_path,
         'best_height_from_active_tip': best_height,
+        'best_height_fallback_used': (best_height_from_active < 0 and best_height_overall >= 0),
         'selection_policy': {
             'near_best_window_blocks': FORK_PROXIMITY_WINDOW,
             'valid_fork_tiebreak': FORK_SELECTION_TIEBREAK,
@@ -384,14 +387,20 @@ repo_root, out_path = sys.argv[1:3]
 terms = ['stakepointer', 'EMERGENCY_STAKEPOINTERS', 'reorg', 'fork', 'split', 'recovery', 'checkpoint']
 
 def run(args):
-    return subprocess.check_output(args, text=True).strip()
+    try:
+        return subprocess.check_output(args, text=True).strip()
+    except Exception:
+        return None
 
-history = {'terms': {}, 'focused_commit': None}
+history = {'terms': {}, 'focused_commit': None, 'git_available': True, 'errors': []}
 for term in terms:
     cmd = ['git', '-C', repo_root, 'log', '--date=iso', '--pretty=format:%H%x09%ad%x09%an%x09%s', '-n', '25', '--grep', term, '-i']
     out = run(cmd)
     rows = []
-    if out:
+    if out is None:
+        history['git_available'] = False
+        history['errors'].append('git log unavailable for term search')
+    elif out:
         for line in out.splitlines():
             parts = line.split('\t', 3)
             if len(parts) == 4:
@@ -399,8 +408,11 @@ for term in terms:
     history['terms'][term] = rows
 
 focus = '361f5c574aff8de59e52f403d715986b53e6e355'
-try:
-    stat = run(['git', '-C', repo_root, 'show', '--name-only', '--pretty=format:%H%x09%ad%x09%an%x09%s', '--date=iso', focus])
+stat = run(['git', '-C', repo_root, 'show', '--name-only', '--pretty=format:%H%x09%ad%x09%an%x09%s', '--date=iso', focus])
+if stat is None:
+    history['git_available'] = False
+    history['errors'].append('git show unavailable for focused commit')
+else:
     lines = [x for x in stat.splitlines() if x.strip()]
     if lines:
         h, d, a, s = lines[0].split('\t', 3)
@@ -408,8 +420,6 @@ try:
             'commit': h, 'date': d, 'author': a, 'subject': s,
             'changed_files': lines[1:],
         }
-except Exception as e:
-    history['focused_commit'] = {'error': str(e)}
 
 with open(out_path, 'w', encoding='utf-8') as f:
     json.dump(history, f, indent=2)

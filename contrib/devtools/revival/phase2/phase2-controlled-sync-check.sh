@@ -267,6 +267,14 @@ for p in final_peers:
         'inbound': p.get('inbound'),
         'version': p.get('version'),
     })
+    if p.get('addr'):
+        peer_addrs.add(p.get('addr'))
+    if isinstance(p.get('startingheight'), int):
+        peer_startingheights.append(p.get('startingheight'))
+    if isinstance(p.get('synced_headers'), int):
+        peer_synced_headers.append(p.get('synced_headers'))
+    if isinstance(p.get('synced_blocks'), int):
+        peer_synced_blocks.append(p.get('synced_blocks'))
 
 max_peer_height=max(peer_startingheights) if peer_startingheights else None
 max_peer_synced_headers=max(peer_synced_headers) if peer_synced_headers else None

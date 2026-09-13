@@ -192,7 +192,8 @@ PY
 
 is_archive_path() {
   local p="$1"
-  local lower="${p,,}"
+  local lower
+  lower="$(printf '%s' "$p" | tr '[:upper:]' '[:lower:]')"
   [[ "$lower" =~ \.(7z|zip|tar|tar\.gz|tgz)$ ]]
 }
 
