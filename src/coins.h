@@ -349,6 +349,8 @@ public:
     bool HaveCoins(const uint256 &txid) const;
     uint256 GetBestBlock() const;
     void SetBackend(CCoinsView &viewIn);
+    CCoinsView* GetBackend() { return base; }
+    const CCoinsView* GetBackend() const { return base; }
     bool BatchWrite(CCoinsMap &mapCoins, const uint256 &hashBlock);
     bool GetStats(CCoinsStats &stats) const;
 };

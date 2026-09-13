@@ -103,7 +103,7 @@ bool CCoinsViewDB::GetStats(CCoinsStats &stats) const {
     /* It seems that there are no "const iterators" for LevelDB.  Since we
        only need read operations on it, use a const-cast to get around
        that restriction.  */
-    boost::scoped_ptr<leveldb::Iterator> pcursor(const_cast<CLevelDBWrapper*>(&db)->NewIterator());
+    boost::scoped_ptr<leveldb::Iterator> pcursor(db.NewIterator());
     pcursor->SeekToFirst();
 
     CHashWriter ss(SER_GETHASH, PROTOCOL_VERSION);
@@ -149,6 +149,42 @@ bool CCoinsViewDB::GetStats(CCoinsStats &stats) const {
     stats.nHeight = mapBlockIndex.find(GetBestBlock())->second->nHeight;
     stats.hashSerialized = ss.GetHash();
     stats.nTotalAmount = nTotalAmount;
+    return true;
+}
+
+bool CCoinsViewDB::ForEachCoin(const boost::function<bool (const uint256&, const CCoins&)>& visitor) const
+{
+    boost::scoped_ptr<leveldb::Iterator> pcursor(db.NewIterator());
+    pcursor->SeekToFirst();
+
+    while (pcursor->Valid()) {
+        boost::this_thread::interruption_point();
+        try {
+            leveldb::Slice slKey = pcursor->key();
+            CDataStream ssKey(slKey.data(), slKey.data() + slKey.size(), SER_DISK, CLIENT_VERSION);
+            char chType;
+            ssKey >> chType;
+
+            if (chType == 'c') {
+                leveldb::Slice slValue = pcursor->value();
+                CDataStream ssValue(slValue.data(), slValue.data() + slValue.size(), SER_DISK, CLIENT_VERSION);
+
+                uint256 txhash;
+                CCoins coins;
+                ssKey >> txhash;
+                ssValue >> coins;
+
+                if (!visitor(txhash, coins)) {
+                    return true;
+                }
+            }
+
+            pcursor->Next();
+        } catch (std::exception &e) {
+            return error("%s : Deserialize or I/O error - %s", __func__, e.what());
+        }
+    }
+
     return true;
 }
 

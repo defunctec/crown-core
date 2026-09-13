@@ -171,6 +171,10 @@ public:
     {
         return pdb->NewIterator(iteroptions);
     }
+    leveldb::Iterator* NewIterator() const
+    {
+        return pdb->NewIterator(iteroptions);
+    }
 };
 
 class CDBTransaction {

@@ -23,6 +23,15 @@ This tooling is for local execution when `crown-old-chain.7z` is not available i
   - Also emits terminal-fork transaction/stakepointer forensics and a 90-day pre-failure stability-window analysis rooted only in the preserved archive plus local repository history.
 - `phase2-controlled-sync-check.sh`
   - Starts `crownd` with `-testnet=0 -regtest=0`, IPv4-only loopback RPC binding, and inbound-disabled peer settings (`-listen=0`, `-discover=0`, `-upnp=0`). Outbound networking is intentionally enabled for continuation checks (`-dnsseed=1`, `-dns=1`) and the script may connect to normal mainnet peers.
+- `phase2b-reconstruct-utxo-snapshot.sh`
+  - Reconstructs chainstate exactly at the fixed provisional legacy-holder snapshot (height `5420279`, hash `8894040303b50f6f6989b65b0402bc09507a63736c3963657239cbaf6c1316ed`) using a disposable copy only, then exports deterministic full-UTXO and derived distribution artifacts.
+  - Uses offline startup (`-listen=0 -dnsseed=0 -dns=0 -discover=0 -upnp=0 -maxconnections=0 -staking=0`) and fails closed if mainnet identity/snapshot identity/reconciliation checks fail.
+  - Uses the `exportutxosnapshot` RPC to iterate the authoritative chainstate database through Crown's native serialization/deserialization logic (no custom consensus reimplementation).
+- `phase2b-analyze-utxo-snapshot.sh`
+  - Post-processing only: reads existing `phase2b-utxos.jsonl` and compact evidence files, with no daemon/RPC requirement and no chainstate mutation.
+  - Streams JSONL line-by-line, validates parseability, recomputes totals in integer satoshis, and fails closed on reconciliation mismatch.
+  - Produces standalone aggregation/distribution artifacts so Phase 2B analysis can be rerun independently of rewind/export.
+  - Accepts optional `--raw-export-commit <git_commit>` so historical datasets can explicitly record the raw-export audit binary commit without regenerating the UTXO export.
 
 Both runtime scripts reject datadirs whose `crown.conf` contains explicit chain-selection settings (`testnet=...`, `regtest=...`, `devnet=...`, `chain=...`, or network section headers).
 `-devnet=0` is intentionally **not** used: in this Crown codebase, `-devnet` is a named-network selector, so `-devnet=0` selects/creates devnet `0` instead of disabling devnet.
@@ -67,6 +76,18 @@ contrib/devtools/revival/phase2/phase2-offline-baseline.sh \
 contrib/devtools/revival/phase2/phase2-controlled-sync-check.sh \
   --datadir /mnt/c/crown/phase2-work/sync-copy \
   --outdir /mnt/c/crown/phase2-work/sync-output
+
+# 4) Phase 2B snapshot UTXO reconstruction/export (disposable OFFLINE copy only)
+contrib/devtools/revival/phase2/phase2b-reconstruct-utxo-snapshot.sh \
+  --datadir /mnt/c/crown/phase2-work/offline-copy \
+  --outdir /mnt/c/crown/phase2-work/phase2b-output
+
+# 5) Phase 2B post-processing rerun (no daemon, no rewind, no re-export)
+contrib/devtools/revival/phase2/phase2b-analyze-utxo-snapshot.sh \
+  --input /mnt/c/crown/phase2-work/phase2b-output/phase2b-utxos.jsonl \
+  --evidence-dir /mnt/c/crown/phase2-work/phase2b-output \
+  --outdir /mnt/c/crown/phase2-work/phase2b-output \
+  --raw-export-commit 516e2eb694cb73c9b14fcbff2eaf02d8a47329a3
 ```
 
 ## Expected output files
@@ -142,6 +163,26 @@ SYNC output directory:
 - `phase2-sync-result.json`
 - `phase2-peer-summary.json`
 - supporting captures (`sync-polls.json`, `final-peerinfo.json`, etc.)
+
+Phase 2B output directory:
+- `phase2b-snapshot-metadata.json`
+- `phase2b-reconstruction-audit.json`
+- `phase2b-utxos.jsonl` (authoritative raw UTXO export; one JSON object per txid:vout)
+- `phase2b-utxos.csv`
+- `phase2b-address-script-balances.csv`
+- `phase2b-address-script-balances.jsonl`
+- `phase2b-distribution-summary.json`
+- supporting captures (`blockchaininfo-after-reconstruction.json`, `txoutsetinfo-after-reconstruction.json`, `snapshot-block.json`, `chaintips-after-reconstruction.json`, `exportutxosnapshot-result.json`)
+
+Phase 2B provenance fields include:
+- snapshot height/hash/timestamp/chainwork
+- archive SHA256
+- `raw_export.audit_binary_git_commit`
+- `raw_export.utxo_jsonl_sha256`
+- `post_processing.tooling_git_commit`
+- reconstruction method detail
+- generation timestamp
+- reconciliation result and artifact SHA256 hashes
 
 ## Archive integrity reference
 

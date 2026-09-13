@@ -5,15 +5,23 @@
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include "checkpoints.h"
+#include "base58.h"
 #include "main.h"
 #include "rpcserver.h"
 #include "sync.h"
+#include "txdb.h"
 #include "util.h"
 #include "mn-pos/prooftracker.h"
+#include "script/standard.h"
 
 #include <stdint.h>
+#include <fstream>
+#include <map>
+#include <boost/bind.hpp>
+#include <boost/filesystem.hpp>
 
 #include "json/json_spirit_value.h"
+#include "json/json_spirit_writer_template.h"
 
 using namespace json_spirit;
 using namespace std;
@@ -412,6 +420,214 @@ Value gettxoutsetinfo(const Array& params, bool fHelp)
         ret.push_back(Pair("hash_serialized", stats.hashSerialized.GetHex()));
         ret.push_back(Pair("total_amount", ValueFromAmount(stats.nTotalAmount)));
     }
+    return ret;
+}
+
+static const CCoinsViewDB* ResolveCoinsViewDB(const CCoinsView* view)
+{
+    const CCoinsView* current = view;
+    while (current != NULL) {
+        const CCoinsViewDB* dbview = dynamic_cast<const CCoinsViewDB*>(current);
+        if (dbview != NULL) {
+            return dbview;
+        }
+        const CCoinsViewBacked* backed = dynamic_cast<const CCoinsViewBacked*>(current);
+        if (backed == NULL) {
+            break;
+        }
+        current = backed->GetBackend();
+    }
+    return NULL;
+}
+
+Value exportutxosnapshot(const Array& params, bool fHelp)
+{
+    if (fHelp || params.size() < 1 || params.size() > 2)
+        throw runtime_error(
+            "exportutxosnapshot \"output_jsonl_path\" ( include_script_asm )\n"
+            "\nExports the entire current-chain UTXO set to JSONL using authoritative chainstate data.\n"
+            "Each line is one unspent txout record keyed by txid:vout.\n"
+            "\nArguments:\n"
+            "1. \"output_jsonl_path\"    (string, required) destination JSONL file path\n"
+            "2. include_script_asm      (boolean, optional, default=true) include script asm text\n"
+            "\nResult:\n"
+            "{\n"
+            "  \"bestblock\": \"hex\",                 (string) chainstate best block hash\n"
+            "  \"height\": n,                          (numeric) chainstate height\n"
+            "  \"utxos_exported\": n,                  (numeric) total exported UTXOs\n"
+            "  \"exported_total_amount\": x.xxx,       (numeric) total exported value\n"
+            "  \"address_bearing_outputs\": n,         (numeric) outputs with decodable address list\n"
+            "  \"single_standard_address_outputs\": n, (numeric) outputs with exactly one decodable address\n"
+            "  \"without_single_standard_address\": n, (numeric) outputs lacking a single decodable address\n"
+            "  \"script_type_summary\": [ ... ]        (array) count/value grouped by script type\n"
+            "}\n"
+            "\nExamples:\n"
+            + HelpExampleCli("exportutxosnapshot", "\"/tmp/crown-utxos.jsonl\"")
+            + HelpExampleRpc("exportutxosnapshot", "\"/tmp/crown-utxos.jsonl\"")
+        );
+
+    std::string outPath = params[0].get_str();
+    if (outPath.empty()) {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "output_jsonl_path must be non-empty");
+    }
+    bool includeScriptAsm = true;
+    if (params.size() > 1) {
+        includeScriptAsm = params[1].get_bool();
+    }
+
+    boost::filesystem::path outFile = boost::filesystem::system_complete(boost::filesystem::path(outPath));
+    boost::filesystem::path outDir = outFile.parent_path();
+    if (!outDir.empty() && !boost::filesystem::exists(outDir)) {
+        if (!boost::filesystem::create_directories(outDir)) {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Unable to create output directory");
+        }
+    }
+
+    std::ofstream out(outFile.string().c_str(), std::ios::out | std::ios::trunc);
+    if (!out.is_open()) {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Unable to open output file for writing");
+    }
+
+    CCoinsStats stats;
+
+    struct ExportContext {
+        std::ostream& stream;
+        bool includeScriptAsm;
+        CAmount totalAmount;
+        uint64_t utxoCount;
+        uint64_t addressBearingCount;
+        uint64_t singleAddressCount;
+        uint64_t noSingleAddressCount;
+        std::map<std::string, std::pair<uint64_t, CAmount> > scriptTypeStats;
+
+        explicit ExportContext(std::ostream& outStream, bool includeAsm)
+            : stream(outStream), includeScriptAsm(includeAsm), totalAmount(0), utxoCount(0),
+              addressBearingCount(0), singleAddressCount(0), noSingleAddressCount(0) {}
+    };
+
+    ExportContext context(out, includeScriptAsm);
+    bool writeError = false;
+
+    struct ExportVisitor {
+        ExportContext& context;
+        bool* writeError;
+
+        ExportVisitor(ExportContext& ctx, bool* writeErrorIn) : context(ctx), writeError(writeErrorIn) {}
+
+        bool Visit(const uint256& txhash, const CCoins& coins) {
+            for (unsigned int n = 0; n < coins.vout.size(); ++n) {
+                const CTxOut& txout = coins.vout[n];
+                if (txout.IsNull()) {
+                    continue;
+                }
+
+                txnouttype outType = TX_NONSTANDARD;
+                std::vector<CTxDestination> addresses;
+                int requiredSigs = 0;
+                bool decoded = ExtractDestinations(txout.scriptPubKey, outType, addresses, requiredSigs);
+                const std::string typeName = GetTxnOutputType(outType);
+
+                Object item;
+                item.push_back(Pair("txid", txhash.GetHex()));
+                item.push_back(Pair("vout", (int64_t)n));
+                item.push_back(Pair("outpoint", strprintf("%s:%u", txhash.GetHex(), n)));
+                item.push_back(Pair("value_sats", (int64_t)txout.nValue));
+                item.push_back(Pair("value_crw", ValueFromAmount(txout.nValue)));
+                item.push_back(Pair("script_pub_key_hex", HexStr(txout.scriptPubKey.begin(), txout.scriptPubKey.end())));
+                if (context.includeScriptAsm) {
+                    item.push_back(Pair("script_pub_key_asm", txout.scriptPubKey.ToString()));
+                }
+                item.push_back(Pair("script_type", typeName));
+                item.push_back(Pair("creation_height", (int64_t)coins.nHeight));
+                item.push_back(Pair("is_block_reward", coins.fBlockReward));
+                item.push_back(Pair("block_reward_type_hint", coins.fBlockReward ? "coinbase_or_coinstake" : "none"));
+                item.push_back(Pair("matches_historical_masternode_collateral_amount", txout.nValue == 10000 * COIN));
+                item.push_back(Pair("matches_historical_systemnode_collateral_amount", txout.nValue == 500 * COIN));
+
+                Array addressList;
+                for (std::vector<CTxDestination>::const_iterator it = addresses.begin(); it != addresses.end(); ++it) {
+                    addressList.push_back(CBitcoinAddress(*it).ToString());
+                }
+                item.push_back(Pair("addresses", addressList));
+                item.push_back(Pair("address_count", (int64_t)addresses.size()));
+                item.push_back(Pair("single_standard_address", decoded && addresses.size() == 1));
+                if (decoded) {
+                    item.push_back(Pair("required_signatures", requiredSigs));
+                }
+
+                context.totalAmount += txout.nValue;
+                context.utxoCount++;
+                if (decoded && !addresses.empty()) {
+                    context.addressBearingCount++;
+                }
+                if (decoded && addresses.size() == 1) {
+                    context.singleAddressCount++;
+                } else {
+                    context.noSingleAddressCount++;
+                }
+                std::pair<uint64_t, CAmount>& stat = context.scriptTypeStats[typeName];
+                stat.first += 1;
+                stat.second += txout.nValue;
+
+                context.stream << write_string(Value(item), false) << "\n";
+                if (!context.stream.good()) {
+                    *writeError = true;
+                    return false;
+                }
+            }
+            return true;
+        }
+    };
+
+    bool ok = false;
+    {
+        LOCK(cs_main);
+        const CCoinsViewDB* coinsdb = ResolveCoinsViewDB(pcoinsTip);
+        if (coinsdb == NULL) {
+            throw JSONRPCError(RPC_INTERNAL_ERROR, "Unable to resolve coin database view for export");
+        }
+
+        FlushStateToDisk();
+        if (!pcoinsTip->GetStats(stats)) {
+            throw JSONRPCError(RPC_INTERNAL_ERROR, "Failed to gather chainstate stats before export");
+        }
+
+        ExportVisitor visitor(context, &writeError);
+        ok = coinsdb->ForEachCoin(boost::bind(&ExportVisitor::Visit, &visitor, _1, _2));
+    }
+
+    out.flush();
+    if (!ok) {
+        throw JSONRPCError(RPC_INTERNAL_ERROR, "UTXO export failed while iterating chainstate");
+    }
+    if (writeError || !out.good()) {
+        throw JSONRPCError(RPC_MISC_ERROR, "UTXO export write failed");
+    }
+
+    Object ret;
+    ret.push_back(Pair("output_jsonl_path", outFile.string()));
+    ret.push_back(Pair("bestblock", stats.hashBlock.GetHex()));
+    ret.push_back(Pair("height", (int64_t)stats.nHeight));
+    ret.push_back(Pair("utxos_exported", (int64_t)context.utxoCount));
+    ret.push_back(Pair("exported_total_amount", ValueFromAmount(context.totalAmount)));
+    ret.push_back(Pair("chainstate_total_amount", ValueFromAmount(stats.nTotalAmount)));
+    ret.push_back(Pair("chainstate_txouts", (int64_t)stats.nTransactionOutputs));
+    ret.push_back(Pair("address_bearing_outputs", (int64_t)context.addressBearingCount));
+    ret.push_back(Pair("single_standard_address_outputs", (int64_t)context.singleAddressCount));
+    ret.push_back(Pair("without_single_standard_address", (int64_t)context.noSingleAddressCount));
+    ret.push_back(Pair("matches_chainstate_totals", context.totalAmount == stats.nTotalAmount && context.utxoCount == stats.nTransactionOutputs));
+
+    Array scriptTypeSummary;
+    for (std::map<std::string, std::pair<uint64_t, CAmount> >::const_iterator it = context.scriptTypeStats.begin();
+         it != context.scriptTypeStats.end(); ++it) {
+        Object row;
+        row.push_back(Pair("script_type", it->first));
+        row.push_back(Pair("utxo_count", (int64_t)it->second.first));
+        row.push_back(Pair("total_amount", ValueFromAmount(it->second.second)));
+        scriptTypeSummary.push_back(row);
+    }
+    ret.push_back(Pair("script_type_summary", scriptTypeSummary));
+
     return ret;
 }
 

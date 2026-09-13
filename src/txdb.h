@@ -13,6 +13,7 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <boost/function.hpp>
 
 class CCoins;
 class uint256;
@@ -45,6 +46,7 @@ public:
     uint256 GetBestBlock() const;
     bool BatchWrite(CCoinsMap &mapCoins, const uint256 &hashBlock);
     bool GetStats(CCoinsStats &stats) const;
+    bool ForEachCoin(const boost::function<bool (const uint256&, const CCoins&)>& visitor) const;
 };
 
 /** Access to the block database (blocks/index/) */
