@@ -351,6 +351,8 @@ if selected_active and selected_fork:
     analysis['selected_pair'] = {
         'active_tip': active_summary,
         'competing_tip': fork_summary,
+        'active_tip_block': active_block,
+        'competing_tip_block': fork_block,
     }
     if ancestry_error is None:
         aw = int(active_summary.get('chainwork') or '0', 16)
@@ -378,6 +380,7 @@ with open(out_path, 'w', encoding='utf-8') as fp:
     json.dump(analysis, fp, indent=2)
 PY
 
+if command -v git >/dev/null 2>&1; then
 python3 - "$REPO_ROOT" "$FORK_HISTORY_JSON" <<'PY'
 import json
 import subprocess
@@ -424,6 +427,15 @@ else:
 with open(out_path, 'w', encoding='utf-8') as f:
     json.dump(history, f, indent=2)
 PY
+else
+  python3 - "$FORK_HISTORY_JSON" <<'PY'
+import json,sys
+out_path=sys.argv[1]
+history={'terms': {}, 'focused_commit': None, 'git_available': False, 'errors': ['git executable not found']}
+with open(out_path, 'w', encoding='utf-8') as f:
+    json.dump(history, f, indent=2)
+PY
+fi
 
 python3 - "$OUTDIR" "$CHAIN_BASELINE_JSON" "$UTXO_SUMMARY_JSON" "$DATADIR" "$ARCHIVE_NAME" "$ARCHIVE_SHA256" "$BEST_HASH" "$HEIGHT" "$GENESIS_HASH" "$VERIFYCHAIN_RESULT" "$TXOUTSET_AVAILABLE" "$OBSERVED_MAGIC_HEX" <<'PY'
 import datetime, json, sys
