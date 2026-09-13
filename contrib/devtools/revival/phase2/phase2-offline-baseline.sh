@@ -60,6 +60,9 @@ mkdir -p "$OUTDIR"
 CHAIN_BASELINE_JSON="$OUTDIR/phase2-chain-baseline.json"
 UTXO_SUMMARY_JSON="$OUTDIR/phase2-utxo-summary.json"
 CHECKPOINT_RESULT_JSON="$OUTDIR/phase2-checkpoint-verification.json"
+FORK_ANALYSIS_JSON="$OUTDIR/phase2-fork-analysis.json"
+FORK_HISTORY_JSON="$OUTDIR/phase2-fork-history-evidence.json"
+FORK_BLOCKS_DIR="$OUTDIR/phase2-fork-blocks"
 
 cleanup() {
   stop_crownd "$DATADIR"
@@ -176,6 +179,201 @@ out={
     'checks': checks,
 }
 json.dump(out, open(out_path,'w'), indent=2)
+PY
+
+mkdir -p "$FORK_BLOCKS_DIR"
+python3 - "$CROWNCLI_BIN" "$DATADIR" "$(phase2_rpc_port "$DATADIR")" "$(phase2_rpc_user "$DATADIR")" "$(phase2_rpc_password "$DATADIR")" "$OUTDIR/chaintips.json" "$FORK_ANALYSIS_JSON" "$FORK_BLOCKS_DIR" <<'PY'
+import datetime
+import json
+import os
+import subprocess
+import sys
+
+crowncli, datadir, rpc_port, rpc_user, rpc_password, chaintips_path, out_path, blocks_dir = sys.argv[1:9]
+with open(chaintips_path, encoding='utf-8') as f:
+    tips = json.load(f)
+
+def rpc(*args):
+    cmd = [
+        crowncli,
+        f'-datadir={datadir}',
+        '-rpcconnect=127.0.0.1',
+        f'-rpcport={rpc_port}',
+        f'-rpcuser={rpc_user}',
+        f'-rpcpassword={rpc_password}',
+    ] + [str(a) for a in args]
+    out = subprocess.check_output(cmd, text=True)
+    try:
+        return json.loads(out)
+    except json.JSONDecodeError:
+        return out.strip()
+
+def maybe_iso(ts):
+    if isinstance(ts, int):
+        return datetime.datetime.utcfromtimestamp(ts).isoformat() + 'Z'
+    return None
+
+def block_bundle(block_hash, tip_status=None):
+    b = rpc('getblock', block_hash)
+    pos_keys = [
+        'flags', 'proofhash', 'modifier', 'modifierchecksum',
+        'entropybit', 'chaintrust', 'mint', 'stake',
+        'stakeModifier', 'stakeModifierV2', 'stakemodifier',
+        'stakepointer', 'masternode', 'systemnode', 'mnpayments', 'snpayments'
+    ]
+    pos_meta = {k: b[k] for k in pos_keys if k in b}
+    return {
+        'hash': b.get('hash'),
+        'height': b.get('height'),
+        'previousblockhash': b.get('previousblockhash'),
+        'time': b.get('time'),
+        'time_iso': maybe_iso(b.get('time')),
+        'difficulty': b.get('difficulty'),
+        'chainwork': b.get('chainwork'),
+        'confirmations': b.get('confirmations'),
+        'status': tip_status,
+        'tx_count': len(b.get('tx', [])) if isinstance(b.get('tx'), list) else None,
+        'version': b.get('version'),
+        'versionHex': b.get('versionHex'),
+        'pos_mnpos_metadata': pos_meta,
+    }, b
+
+active = [t for t in tips if t.get('status') == 'active']
+valid_forks = [t for t in tips if t.get('status') == 'valid-fork']
+best_height = max((int(t.get('height', -1)) for t in active), default=-1)
+near_best = [t for t in tips if t.get('status') in ('active', 'valid-fork') and abs(int(t.get('height', -1)) - best_height) <= 32]
+
+selected_active = max(active, key=lambda t: int(t.get('height', -1))) if active else None
+selected_fork = None
+if valid_forks:
+    selected_fork = sorted(valid_forks, key=lambda t: (abs(int(t.get('height', -1)) - best_height), -int(t.get('branchlen', 0))))[0]
+
+analysis = {
+    'generated_at_utc': datetime.datetime.utcnow().isoformat() + 'Z',
+    'source': {
+        'chaintips_file': chaintips_path,
+        'best_height_from_active_tip': best_height,
+    },
+    'tips': {
+        'active': active,
+        'valid_fork': valid_forks,
+        'near_best_active_or_valid_fork': near_best,
+    },
+    'selected_pair': None,
+    'common_ancestor': None,
+    'first_divergent': None,
+    'branch_metrics': None,
+    'selection': {
+        'archived_node_selected_active_branch': True,
+        'strictly_greater_chainwork_branch': None,
+    },
+    'divergent_blocks_export_dir': blocks_dir,
+    'divergent_block_exports': {'active': [], 'competing': []},
+}
+
+if selected_active and selected_fork:
+    active_summary, active_block = block_bundle(selected_active['hash'], selected_active.get('status'))
+    fork_summary, fork_block = block_bundle(selected_fork['hash'], selected_fork.get('status'))
+
+    a = {'hash': active_block['hash'], 'height': int(active_block['height']), 'prev': active_block.get('previousblockhash')}
+    f = {'hash': fork_block['hash'], 'height': int(fork_block['height']), 'prev': fork_block.get('previousblockhash')}
+    active_chain = []
+    fork_chain = []
+
+    while a['hash'] != f['hash']:
+        if a['height'] > f['height']:
+            active_chain.append(dict(a))
+            hb = rpc('getblock', a['prev'])
+            a = {'hash': hb['hash'], 'height': int(hb['height']), 'prev': hb.get('previousblockhash')}
+        elif f['height'] > a['height']:
+            fork_chain.append(dict(f))
+            hb = rpc('getblock', f['prev'])
+            f = {'hash': hb['hash'], 'height': int(hb['height']), 'prev': hb.get('previousblockhash')}
+        else:
+            active_chain.append(dict(a))
+            fork_chain.append(dict(f))
+            ab = rpc('getblock', a['prev'])
+            fb = rpc('getblock', f['prev'])
+            a = {'hash': ab['hash'], 'height': int(ab['height']), 'prev': ab.get('previousblockhash')}
+            f = {'hash': fb['hash'], 'height': int(fb['height']), 'prev': fb.get('previousblockhash')}
+
+    common_ancestor = {'height': a['height'], 'hash': a['hash']}
+    first_div_active = active_chain[-1] if active_chain else None
+    first_div_fork = fork_chain[-1] if fork_chain else None
+
+    for side_name, chain in (('active', active_chain), ('competing', fork_chain)):
+        for node in reversed(chain):
+            full = rpc('getblock', node['hash'])
+            out_file = os.path.join(blocks_dir, f'{side_name}-h{full["height"]}-{full["hash"]}.json')
+            with open(out_file, 'w', encoding='utf-8') as fp:
+                json.dump(full, fp, indent=2)
+            analysis['divergent_block_exports'][side_name].append(out_file)
+
+    aw = int(active_summary.get('chainwork') or '0', 16)
+    fw = int(fork_summary.get('chainwork') or '0', 16)
+    stronger = 'active' if aw > fw else ('competing' if fw > aw else 'equal')
+
+    analysis['selected_pair'] = {
+        'active_tip': active_summary,
+        'competing_tip': fork_summary,
+    }
+    analysis['common_ancestor'] = common_ancestor
+    analysis['first_divergent'] = {
+        'active_branch': first_div_active,
+        'competing_branch': first_div_fork,
+    }
+    analysis['branch_metrics'] = {
+        'active_branch_divergent_length': len(active_chain),
+        'competing_branch_divergent_length': len(fork_chain),
+        'active_tip_chainwork': active_summary.get('chainwork'),
+        'competing_tip_chainwork': fork_summary.get('chainwork'),
+        'active_tip_height': active_summary.get('height'),
+        'competing_tip_height': fork_summary.get('height'),
+    }
+    analysis['selection']['strictly_greater_chainwork_branch'] = stronger if stronger != 'equal' else None
+
+with open(out_path, 'w', encoding='utf-8') as fp:
+    json.dump(analysis, fp, indent=2)
+PY
+
+python3 - "$REPO_ROOT" "$FORK_HISTORY_JSON" <<'PY'
+import json
+import subprocess
+import sys
+
+repo_root, out_path = sys.argv[1:3]
+terms = ['stakepointer', 'EMERGENCY_STAKEPOINTERS', 'reorg', 'fork', 'split', 'recovery', 'checkpoint']
+
+def run(args):
+    return subprocess.check_output(args, text=True).strip()
+
+history = {'terms': {}, 'focused_commit': None}
+for term in terms:
+    cmd = ['git', '-C', repo_root, 'log', '--date=iso', '--pretty=format:%H%x09%ad%x09%an%x09%s', '-n', '25', '--grep', term, '-i']
+    out = run(cmd)
+    rows = []
+    if out:
+        for line in out.splitlines():
+            parts = line.split('\t', 3)
+            if len(parts) == 4:
+                rows.append({'commit': parts[0], 'date': parts[1], 'author': parts[2], 'subject': parts[3]})
+    history['terms'][term] = rows
+
+focus = '361f5c574aff8de59e52f403d715986b53e6e355'
+try:
+    stat = run(['git', '-C', repo_root, 'show', '--name-only', '--pretty=format:%H%x09%ad%x09%an%x09%s', '--date=iso', focus])
+    lines = [x for x in stat.splitlines() if x.strip()]
+    if lines:
+        h, d, a, s = lines[0].split('\t', 3)
+        history['focused_commit'] = {
+            'commit': h, 'date': d, 'author': a, 'subject': s,
+            'changed_files': lines[1:],
+        }
+except Exception as e:
+    history['focused_commit'] = {'error': str(e)}
+
+with open(out_path, 'w', encoding='utf-8') as f:
+    json.dump(history, f, indent=2)
 PY
 
 python3 - "$OUTDIR" "$CHAIN_BASELINE_JSON" "$UTXO_SUMMARY_JSON" "$DATADIR" "$ARCHIVE_NAME" "$ARCHIVE_SHA256" "$BEST_HASH" "$HEIGHT" "$GENESIS_HASH" "$VERIFYCHAIN_RESULT" "$TXOUTSET_AVAILABLE" "$OBSERVED_MAGIC_HEX" <<'PY'
@@ -310,3 +508,5 @@ log "Offline baseline complete."
 log "Output: $CHAIN_BASELINE_JSON"
 log "Output: $UTXO_SUMMARY_JSON"
 log "Output: $CHECKPOINT_RESULT_JSON"
+log "Output: $FORK_ANALYSIS_JSON"
+log "Output: $FORK_HISTORY_JSON"

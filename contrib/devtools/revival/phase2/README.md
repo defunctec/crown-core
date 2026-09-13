@@ -73,6 +73,9 @@ OFFLINE output directory:
 - `phase2-chain-baseline.json`
 - `phase2-utxo-summary.json`
 - `phase2-checkpoint-verification.json`
+- `phase2-fork-analysis.json`
+- `phase2-fork-history-evidence.json`
+- `phase2-fork-blocks/` (divergent-branch block JSON exports when available)
 - supporting captures (`blockchaininfo.json`, `tip-block.json`, etc.)
 
 SYNC output directory:
