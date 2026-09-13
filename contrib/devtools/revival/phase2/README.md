@@ -27,6 +27,10 @@ This tooling is for local execution when `crown-old-chain.7z` is not available i
   - Reconstructs chainstate exactly at the fixed provisional legacy-holder snapshot (height `5420279`, hash `8894040303b50f6f6989b65b0402bc09507a63736c3963657239cbaf6c1316ed`) using a disposable copy only, then exports deterministic full-UTXO and derived distribution artifacts.
   - Uses offline startup (`-listen=0 -dnsseed=0 -dns=0 -discover=0 -upnp=0 -maxconnections=0 -staking=0`) and fails closed if mainnet identity/snapshot identity/reconciliation checks fail.
   - Uses the `exportutxosnapshot` RPC to iterate the authoritative chainstate database through Crown's native serialization/deserialization logic (no custom consensus reimplementation).
+- `phase2b-analyze-utxo-snapshot.sh`
+  - Post-processing only: reads existing `phase2b-utxos.jsonl` and compact evidence files, with no daemon/RPC requirement and no chainstate mutation.
+  - Streams JSONL line-by-line, validates parseability, recomputes totals in integer satoshis, and fails closed on reconciliation mismatch.
+  - Produces standalone aggregation/distribution artifacts so Phase 2B analysis can be rerun independently of rewind/export.
 
 Both runtime scripts reject datadirs whose `crown.conf` contains explicit chain-selection settings (`testnet=...`, `regtest=...`, `devnet=...`, `chain=...`, or network section headers).
 `-devnet=0` is intentionally **not** used: in this Crown codebase, `-devnet` is a named-network selector, so `-devnet=0` selects/creates devnet `0` instead of disabling devnet.
@@ -75,6 +79,12 @@ contrib/devtools/revival/phase2/phase2-controlled-sync-check.sh \
 # 4) Phase 2B snapshot UTXO reconstruction/export (disposable OFFLINE copy only)
 contrib/devtools/revival/phase2/phase2b-reconstruct-utxo-snapshot.sh \
   --datadir /mnt/c/crown/phase2-work/offline-copy \
+  --outdir /mnt/c/crown/phase2-work/phase2b-output
+
+# 5) Phase 2B post-processing rerun (no daemon, no rewind, no re-export)
+contrib/devtools/revival/phase2/phase2b-analyze-utxo-snapshot.sh \
+  --input /mnt/c/crown/phase2-work/phase2b-output/phase2b-utxos.jsonl \
+  --evidence-dir /mnt/c/crown/phase2-work/phase2b-output \
   --outdir /mnt/c/crown/phase2-work/phase2b-output
 ```
 
@@ -158,7 +168,7 @@ Phase 2B output directory:
 - `phase2b-utxos.jsonl` (authoritative raw UTXO export; one JSON object per txid:vout)
 - `phase2b-utxos.csv`
 - `phase2b-address-script-balances.csv`
-- `phase2b-address-script-balances.json`
+- `phase2b-address-script-balances.jsonl`
 - `phase2b-distribution-summary.json`
 - supporting captures (`blockchaininfo-after-reconstruction.json`, `txoutsetinfo-after-reconstruction.json`, `snapshot-block.json`, `chaintips-after-reconstruction.json`, `exportutxosnapshot-result.json`)
 
