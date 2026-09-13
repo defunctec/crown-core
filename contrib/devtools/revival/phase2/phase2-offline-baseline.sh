@@ -345,11 +345,13 @@ if selected_active and selected_fork:
 
     if ancestry_error is None:
         common_ancestor = {'height': a['height'], 'hash': a['hash']}
-        first_div_active = active_chain[-1] if active_chain else None
-        first_div_fork = fork_chain[-1] if fork_chain else None
+        active_chain_ancestor_to_tip = list(reversed(active_chain))
+        fork_chain_ancestor_to_tip = list(reversed(fork_chain))
+        first_div_active = active_chain_ancestor_to_tip[0] if active_chain_ancestor_to_tip else None
+        first_div_fork = fork_chain_ancestor_to_tip[0] if fork_chain_ancestor_to_tip else None
 
-        for side_name, chain in (('active', active_chain), ('competing', fork_chain)):
-            for node in reversed(chain):
+        for side_name, chain in (('active', active_chain_ancestor_to_tip), ('competing', fork_chain_ancestor_to_tip)):
+            for node in chain:
                 full = rpc('getblock', node['hash'])
                 out_file = os.path.join(blocks_dir, f'{side_name}-h{full["height"]}-{full["hash"]}.json')
                 with open(out_file, 'w', encoding='utf-8') as fp:

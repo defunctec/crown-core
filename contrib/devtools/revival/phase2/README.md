@@ -21,7 +21,7 @@ This tooling is for local execution when `crown-old-chain.7z` is not available i
 - `phase2-offline-baseline.sh`
   - Starts `crownd` with networking disabled, IPv4-only loopback RPC binding, and exports baseline JSON artifacts.
 - `phase2-controlled-sync-check.sh`
-  - Starts `crownd` with alternate networks explicitly disabled (`-testnet=0 -regtest=0 -devnet=0`), IPv4-only loopback RPC binding, and inbound-disabled peer settings (`-listen=0`, `-upnp=0`). Outbound networking is intentionally enabled for continuation checks (`-discover=1`, `-dnsseed=1`, `-dns=1`) and the script may connect to normal mainnet peers.
+  - Starts `crownd` with alternate networks explicitly disabled (`-testnet=0 -regtest=0 -devnet=0`), IPv4-only loopback RPC binding, and inbound-disabled peer settings (`-listen=0`, `-discover=0`, `-upnp=0`). Outbound networking is intentionally enabled for continuation checks (`-dnsseed=1`, `-dns=1`) and the script may connect to normal mainnet peers.
 
 Both runtime scripts reject datadirs whose `crown.conf` contains explicit chain-selection settings (`testnet=...`, `regtest=...`, `devnet=...`, `chain=...`, or network section headers).
 Both runtime scripts also require the `phase2-working-copy.json` marker written by `phase2-prepare-working-copies.sh`.
