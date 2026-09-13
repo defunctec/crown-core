@@ -1022,9 +1022,12 @@ analysis['phase2a_closeout_findings'] = {
             'tertiary': 'higher pointer address wins as a process-local tiebreak for loaded-from-disk blocks',
         },
         'applied_to_terminal_pair': {
-            'active_hash': selected.get('active_hash'),
-            'competing_hash': selected.get('competing_hash'),
-            'equal_chainwork': selected.get('same_chainwork'),
+            'active_hash': (selected.get('active_tip') or {}).get('hash'),
+            'competing_hash': (selected.get('competing_tip') or {}).get('hash'),
+            'equal_chainwork': (
+                (selected.get('active_tip') or {}).get('chainwork')
+                == (selected.get('competing_tip') or {}).get('chainwork')
+            ),
             'sequence_id_used': True,
             'block_hash_used': False,
             'arrival_order_used': True,
