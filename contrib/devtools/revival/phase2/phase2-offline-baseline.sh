@@ -213,15 +213,21 @@ def maybe_iso(ts):
         return datetime.datetime.utcfromtimestamp(ts).isoformat() + 'Z'
     return None
 
+TIP_SUMMARY_FIELDS = [
+    'hash', 'height', 'previousblockhash', 'time', 'time_iso', 'difficulty',
+    'chainwork', 'confirmations', 'status', 'tx_count', 'version', 'versionHex',
+    'pos_mnpos_metadata',
+]
+POS_MNPOS_FIELDS = [
+    'flags', 'proofhash', 'modifier', 'modifierchecksum',
+    'entropybit', 'chaintrust', 'mint', 'stake',
+    'stakeModifier', 'stakeModifierV2', 'stakemodifier',
+    'stakepointer', 'masternode', 'systemnode', 'mnpayments', 'snpayments'
+]
+
 def block_bundle(block_hash, tip_status=None):
     b = rpc('getblock', block_hash)
-    pos_keys = [
-        'flags', 'proofhash', 'modifier', 'modifierchecksum',
-        'entropybit', 'chaintrust', 'mint', 'stake',
-        'stakeModifier', 'stakeModifierV2', 'stakemodifier',
-        'stakepointer', 'masternode', 'systemnode', 'mnpayments', 'snpayments'
-    ]
-    pos_meta = {k: b[k] for k in pos_keys if k in b}
+    pos_meta = {k: b[k] for k in POS_MNPOS_FIELDS if k in b}
     return {
         'hash': b.get('hash'),
         'height': b.get('height'),
@@ -271,6 +277,8 @@ analysis = {
             'near_best_window_blocks': FORK_PROXIMITY_WINDOW,
             'valid_fork_tiebreak': FORK_SELECTION_TIEBREAK,
             'max_ancestry_steps': MAX_ANCESTRY_STEPS,
+            'tip_summary_fields': TIP_SUMMARY_FIELDS,
+            'tip_pos_mnpos_fields': POS_MNPOS_FIELDS,
         },
     },
     'tips': {
@@ -351,8 +359,6 @@ if selected_active and selected_fork:
     analysis['selected_pair'] = {
         'active_tip': active_summary,
         'competing_tip': fork_summary,
-        'active_tip_block': active_block,
-        'competing_tip_block': fork_block,
     }
     if ancestry_error is None:
         aw = int(active_summary.get('chainwork') or '0', 16)
