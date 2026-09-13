@@ -1123,8 +1123,8 @@ window_query = run([
     '--until=' + window_end,
     '--date=iso',
     '--pretty=format:%H%x09%ad%x09%an%x09%s',
-    '--grep=stakepointer|recovery|emergency|fork|reorg|checkpoint',
     '-E',
+    '--grep=stakepointer|recovery|emergency|fork|reorg|checkpoint',
 ])
 if window_query:
     for line in window_query.splitlines():
