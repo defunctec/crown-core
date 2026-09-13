@@ -273,13 +273,14 @@ valid_forks = [t for t in tips if t.get('status') == 'valid-fork']
 best_height_from_active = max((as_int(t.get('height', -1), -1) for t in active), default=-1)
 best_height_overall = max((as_int(t.get('height', -1), -1) for t in tips), default=-1)
 best_height = best_height_from_active if best_height_from_active >= 0 else best_height_overall
-near_best = [t for t in tips if t.get('status') in ('active', 'valid-fork') and abs(as_int(t.get('height', -1), -1) - best_height) <= FORK_PROXIMITY_WINDOW]
 
 selected_active = max(active, key=lambda t: as_int(t.get('height', -1), -1)) if active else None
+selection_anchor_height = as_int(selected_active.get('height', -1), -1) if selected_active else best_height
+near_best = [t for t in tips if t.get('status') in ('active', 'valid-fork') and abs(as_int(t.get('height', -1), -1) - selection_anchor_height) <= FORK_PROXIMITY_WINDOW]
 selected_fork = None
 candidate_forks = [t for t in near_best if t.get('status') == 'valid-fork']
 if candidate_forks:
-    selected_fork = sorted(candidate_forks, key=lambda t: (abs(as_int(t.get('height', -1), -1) - best_height), -as_int(t.get('branchlen', 0), 0)))[0]
+    selected_fork = sorted(candidate_forks, key=lambda t: (abs(as_int(t.get('height', -1), -1) - selection_anchor_height), -as_int(t.get('branchlen', 0), 0)))[0]
 
 analysis = {
     'generated_at_utc': datetime.datetime.utcnow().isoformat() + 'Z',
@@ -287,6 +288,7 @@ analysis = {
         'chaintips_file': chaintips_path,
         'best_height_from_active_tip': best_height,
         'best_height_fallback_used': (best_height_from_active < 0 and best_height_overall >= 0),
+        'selection_anchor_height': selection_anchor_height,
         'selection_policy': {
             'near_best_window_blocks': FORK_PROXIMITY_WINDOW,
             'valid_fork_tiebreak': FORK_SELECTION_TIEBREAK,
