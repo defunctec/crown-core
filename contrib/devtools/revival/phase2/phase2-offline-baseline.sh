@@ -188,6 +188,7 @@ import json
 import os
 import subprocess
 import sys
+import string
 
 crowncli, datadir, rpc_port, rpc_user, rpc_password, chaintips_path, out_path, blocks_dir = sys.argv[1:9]
 with open(chaintips_path, encoding='utf-8') as f:
@@ -250,6 +251,19 @@ def as_int(value, default=0):
     except Exception:
         return default
 
+def parse_chainwork(value):
+    if not isinstance(value, str):
+        return None
+    text = value.strip().lower()
+    if text.startswith('0x'):
+        text = text[2:]
+    if not text or any(ch not in string.hexdigits for ch in text):
+        return None
+    try:
+        return int(text, 16)
+    except Exception:
+        return None
+
 FORK_PROXIMITY_WINDOW = 32
 FORK_SELECTION_TIEBREAK = 'nearest-height-then-longest-branchlen'
 MAX_ANCESTRY_STEPS = 1000000
@@ -293,6 +307,7 @@ analysis = {
     'selection': {
         'archived_node_selected_active_branch': True,
         'strictly_greater_chainwork_branch': None,
+        'chainwork_comparison_error': None,
     },
     'ancestry_resolution': {
         'resolved': False,
@@ -363,9 +378,13 @@ if selected_active and selected_fork:
         'competing_tip': fork_summary,
     }
     if ancestry_error is None:
-        aw = int(active_summary.get('chainwork') or '0', 16)
-        fw = int(fork_summary.get('chainwork') or '0', 16)
-        stronger = 'active' if aw > fw else ('competing' if fw > aw else 'equal')
+        aw = parse_chainwork(active_summary.get('chainwork'))
+        fw = parse_chainwork(fork_summary.get('chainwork'))
+        stronger = None
+        if aw is not None and fw is not None:
+            stronger = 'active' if aw > fw else ('competing' if fw > aw else 'equal')
+        else:
+            analysis['selection']['chainwork_comparison_error'] = 'missing or non-hex chainwork in selected tip summary'
         analysis['common_ancestor'] = common_ancestor
         analysis['first_divergent'] = {
             'active_branch': first_div_active,
@@ -380,7 +399,8 @@ if selected_active and selected_fork:
             'competing_tip_height': fork_summary.get('height'),
         }
         analysis['ancestry_resolution'] = {'resolved': True, 'error': None}
-        analysis['selection']['strictly_greater_chainwork_branch'] = stronger if stronger != 'equal' else None
+        if stronger is not None:
+            analysis['selection']['strictly_greater_chainwork_branch'] = stronger if stronger != 'equal' else None
     else:
         analysis['ancestry_resolution'] = {'resolved': False, 'error': ancestry_error}
 
