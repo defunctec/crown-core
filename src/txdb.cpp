@@ -152,6 +152,42 @@ bool CCoinsViewDB::GetStats(CCoinsStats &stats) const {
     return true;
 }
 
+bool CCoinsViewDB::ForEachCoin(const boost::function<bool (const uint256&, const CCoins&)>& visitor) const
+{
+    boost::scoped_ptr<leveldb::Iterator> pcursor(const_cast<CLevelDBWrapper*>(&db)->NewIterator());
+    pcursor->SeekToFirst();
+
+    while (pcursor->Valid()) {
+        boost::this_thread::interruption_point();
+        try {
+            leveldb::Slice slKey = pcursor->key();
+            CDataStream ssKey(slKey.data(), slKey.data() + slKey.size(), SER_DISK, CLIENT_VERSION);
+            char chType;
+            ssKey >> chType;
+
+            if (chType == 'c') {
+                leveldb::Slice slValue = pcursor->value();
+                CDataStream ssValue(slValue.data(), slValue.data() + slValue.size(), SER_DISK, CLIENT_VERSION);
+
+                uint256 txhash;
+                CCoins coins;
+                ssKey >> txhash;
+                ssValue >> coins;
+
+                if (!visitor(txhash, coins)) {
+                    return true;
+                }
+            }
+
+            pcursor->Next();
+        } catch (std::exception &e) {
+            return error("%s : Deserialize or I/O error - %s", __func__, e.what());
+        }
+    }
+
+    return true;
+}
+
 bool CBlockTreeDB::ReadTxIndex(const uint256 &txid, CDiskTxPos &pos) {
     return Read(make_pair('t', txid), pos);
 }
