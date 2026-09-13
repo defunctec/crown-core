@@ -424,7 +424,7 @@ def run(args):
 
 history = {'terms': {}, 'focused_commit': None, 'git_available': True, 'errors': []}
 for term in terms:
-    cmd = ['git', '-C', repo_root, 'log', '--date=iso', '--pretty=format:%H%x09%ad%x09%an%x09%s', '-n', '25', '--grep', term, '-i']
+    cmd = ['git', '-C', repo_root, 'log', '--date=iso', '--pretty=format:%H%x09%ad%x09%an%x09%s', '-n', '25', '--grep', term, '--fixed-strings', '-i']
     out = run(cmd)
     rows = []
     if out is None:
@@ -436,20 +436,6 @@ for term in terms:
             if len(parts) == 4:
                 rows.append({'commit': parts[0], 'date': parts[1], 'author': parts[2], 'subject': parts[3]})
     history['terms'][term] = rows
-
-focus = '361f5c574aff8de59e52f403d715986b53e6e355'
-stat = run(['git', '-C', repo_root, 'show', '--name-only', '--pretty=format:%H%x09%ad%x09%an%x09%s', '--date=iso', focus])
-if stat is None:
-    history['git_available'] = False
-    history['errors'].append('git show unavailable for focused commit')
-else:
-    lines = [x for x in stat.splitlines() if x.strip()]
-    if lines:
-        h, d, a, s = lines[0].split('\t', 3)
-        history['focused_commit'] = {
-            'commit': h, 'date': d, 'author': a, 'subject': s,
-            'changed_files': lines[1:],
-        }
 
 with open(out_path, 'w', encoding='utf-8') as f:
     json.dump(history, f, indent=2)

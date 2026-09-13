@@ -103,8 +103,8 @@ Expected archive SHA256 for `crown-old-chain.7z`:
 
 Current Phase 2A/revival branch provenance:
 
-- Current local Phase 2A audit/build `HEAD`: `b24ec8579f8a435d13803a761a1714434ef64ac8`
-- Current local binaries identify as `v0.14.0.7` plus that Git revision.
+- Record current audit/build provenance from the local repository at runtime (`git rev-parse HEAD`) and local binary version output (`crownd --version` / `crown-cli --version`) instead of relying on static README hashes.
+- Current local binaries on this branch identify as `v0.14.0.7` plus the current Git revision.
 - `v0.14.0.7` on this branch is later development ancestry, introduced by:
   - `361f5c574aff8de59e52f403d715986b53e6e355` (30 Aug 2025, "Added compiler switch EMERGENCY_STAKEPOINTERS...")
   - This commit changed build metadata in both `configure.ac` and `src/clientversion.h` (`6 -> 7`) and also included production-code changes in staking/wallet/masternode/systemnode/version-related areas.
