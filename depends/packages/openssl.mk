@@ -21,7 +21,9 @@ $(package)_config_opts_i686_mingw32=mingw
 endef
 
 define $(package)_preprocess_cmds
-  patch -p1 < $($(package)_patch_dir)/linux-x86_64-termios.patch && \
+  for patch in $($(package)_patches); do \
+    patch -p1 < $($(package)_patch_dir)/$$patch || exit 1; \
+  done && \
   sed -i.old "/define DATE/d" util/mkbuildinf.pl && \
   sed -i.old "s|engines apps test|engines|" Makefile.org
 endef
