@@ -203,39 +203,39 @@ crowncli, datadir, rpc_port, rpc_user, rpc_password, chaintips_path, out_path, b
 with open(chaintips_path, encoding='utf-8') as f:
     tips = json.load(f)
 
+def serialize_rpc_arg(value):
+    if value is True:
+        return 'true'
+    if value is False:
+        return 'false'
+    if value is None:
+        return 'null'
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return str(value)
+    return value
+
+def build_rpc_cmd(*rpc_args):
+    cmd = [
+        crowncli,
+        f'-datadir={datadir}',
+        '-rpcconnect=127.0.0.1',
+        f'-rpcport={rpc_port}',
+        f'-rpcuser={rpc_user}',
+        f'-rpcpassword={rpc_password}',
+    ] + [serialize_rpc_arg(a) for a in rpc_args]
+    forbidden = [item for item in cmd if item in ('True', 'False')]
+    if forbidden:
+        raise ValueError(f'forbidden Python bool literal in crown-cli argv: {forbidden}')
+    return cmd
+
+smoke_cmd = build_rpc_cmd('getblock', '00' * 32, False)
+smoke_rawtx_cmd = build_rpc_cmd('getrawtransaction', '00' * 32, 1)
+if smoke_cmd[-1] != 'false' or 'True' in smoke_cmd or 'False' in smoke_cmd:
+    raise ValueError(f'getblock argv serialization regression: {smoke_cmd}')
+if smoke_rawtx_cmd[-1] != '1' or 'True' in smoke_rawtx_cmd or 'False' in smoke_rawtx_cmd:
+    raise ValueError(f'getrawtransaction argv serialization regression: {smoke_rawtx_cmd}')
+
 def rpc(*args):
-    def serialize_rpc_arg(value):
-        if value is True:
-            return 'true'
-        if value is False:
-            return 'false'
-        if value is None:
-            return 'null'
-        if isinstance(value, (int, float)) and not isinstance(value, bool):
-            return str(value)
-        return value
-
-    def build_rpc_cmd(*rpc_args):
-        cmd = [
-            crowncli,
-            f'-datadir={datadir}',
-            '-rpcconnect=127.0.0.1',
-            f'-rpcport={rpc_port}',
-            f'-rpcuser={rpc_user}',
-            f'-rpcpassword={rpc_password}',
-        ] + [serialize_rpc_arg(a) for a in rpc_args]
-        forbidden = [item for item in cmd if item in ('True', 'False')]
-        if forbidden:
-            raise ValueError(f'forbidden Python bool literal in crown-cli argv: {forbidden}')
-        return cmd
-
-    smoke_cmd = build_rpc_cmd('getblock', '00' * 32, False)
-    smoke_rawtx_cmd = build_rpc_cmd('getrawtransaction', '00' * 32, 1)
-    if smoke_cmd[-1] != 'false' or 'True' in smoke_cmd or 'False' in smoke_cmd:
-        raise ValueError(f'getblock argv serialization regression: {smoke_cmd}')
-    if smoke_rawtx_cmd[-1] != '1' or 'True' in smoke_rawtx_cmd or 'False' in smoke_rawtx_cmd:
-        raise ValueError(f'getrawtransaction argv serialization regression: {smoke_rawtx_cmd}')
-
     cmd = build_rpc_cmd(*args)
     out = subprocess.check_output(cmd, text=True)
     try:
@@ -456,39 +456,39 @@ import sys
 crowncli, datadir, rpc_port, rpc_user, rpc_password, fork_analysis_path, out_path = sys.argv[1:8]
 fork_analysis = json.load(open(fork_analysis_path, encoding='utf-8'))
 
+def serialize_rpc_arg(value):
+    if value is True:
+        return 'true'
+    if value is False:
+        return 'false'
+    if value is None:
+        return 'null'
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return str(value)
+    return value
+
+def build_rpc_cmd(*rpc_args):
+    cmd = [
+        crowncli,
+        f'-datadir={datadir}',
+        '-rpcconnect=127.0.0.1',
+        f'-rpcport={rpc_port}',
+        f'-rpcuser={rpc_user}',
+        f'-rpcpassword={rpc_password}',
+    ] + [serialize_rpc_arg(a) for a in rpc_args]
+    forbidden = [item for item in cmd if item in ('True', 'False')]
+    if forbidden:
+        raise ValueError(f'forbidden Python bool literal in crown-cli argv: {forbidden}')
+    return cmd
+
+smoke_cmd = build_rpc_cmd('getblock', '00' * 32, False)
+smoke_rawtx_cmd = build_rpc_cmd('getrawtransaction', '00' * 32, 1)
+if smoke_cmd[-1] != 'false' or 'True' in smoke_cmd or 'False' in smoke_cmd:
+    raise ValueError(f'getblock argv serialization regression: {smoke_cmd}')
+if smoke_rawtx_cmd[-1] != '1' or 'True' in smoke_rawtx_cmd or 'False' in smoke_rawtx_cmd:
+    raise ValueError(f'getrawtransaction argv serialization regression: {smoke_rawtx_cmd}')
+
 def rpc(*args):
-    def serialize_rpc_arg(value):
-        if value is True:
-            return 'true'
-        if value is False:
-            return 'false'
-        if value is None:
-            return 'null'
-        if isinstance(value, (int, float)) and not isinstance(value, bool):
-            return str(value)
-        return value
-
-    def build_rpc_cmd(*rpc_args):
-        cmd = [
-            crowncli,
-            f'-datadir={datadir}',
-            '-rpcconnect=127.0.0.1',
-            f'-rpcport={rpc_port}',
-            f'-rpcuser={rpc_user}',
-            f'-rpcpassword={rpc_password}',
-        ] + [serialize_rpc_arg(a) for a in rpc_args]
-        forbidden = [item for item in cmd if item in ('True', 'False')]
-        if forbidden:
-            raise ValueError(f'forbidden Python bool literal in crown-cli argv: {forbidden}')
-        return cmd
-
-    smoke_cmd = build_rpc_cmd('getblock', '00' * 32, False)
-    smoke_rawtx_cmd = build_rpc_cmd('getrawtransaction', '00' * 32, 1)
-    if smoke_cmd[-1] != 'false' or 'True' in smoke_cmd or 'False' in smoke_cmd:
-        raise ValueError(f'getblock argv serialization regression: {smoke_cmd}')
-    if smoke_rawtx_cmd[-1] != '1' or 'True' in smoke_rawtx_cmd or 'False' in smoke_rawtx_cmd:
-        raise ValueError(f'getrawtransaction argv serialization regression: {smoke_rawtx_cmd}')
-
     cmd = build_rpc_cmd(*args)
     out = subprocess.check_output(cmd, text=True)
     try:
@@ -972,39 +972,39 @@ min_ts = anchor_ts - window_seconds
 scan_min_ts = min_ts - surround_seconds
 max_ts = anchor_ts + 24 * 60 * 60
 
+def serialize_rpc_arg(value):
+    if value is True:
+        return 'true'
+    if value is False:
+        return 'false'
+    if value is None:
+        return 'null'
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return str(value)
+    return value
+
+def build_rpc_cmd(*rpc_args):
+    cmd = [
+        crowncli,
+        f'-datadir={datadir}',
+        '-rpcconnect=127.0.0.1',
+        f'-rpcport={rpc_port}',
+        f'-rpcuser={rpc_user}',
+        f'-rpcpassword={rpc_password}',
+    ] + [serialize_rpc_arg(a) for a in rpc_args]
+    forbidden = [item for item in cmd if item in ('True', 'False')]
+    if forbidden:
+        raise ValueError(f'forbidden Python bool literal in crown-cli argv: {forbidden}')
+    return cmd
+
+smoke_cmd = build_rpc_cmd('getblock', '00' * 32, False)
+smoke_rawtx_cmd = build_rpc_cmd('getrawtransaction', '00' * 32, 1)
+if smoke_cmd[-1] != 'false' or 'True' in smoke_cmd or 'False' in smoke_cmd:
+    raise ValueError(f'getblock argv serialization regression: {smoke_cmd}')
+if smoke_rawtx_cmd[-1] != '1' or 'True' in smoke_rawtx_cmd or 'False' in smoke_rawtx_cmd:
+    raise ValueError(f'getrawtransaction argv serialization regression: {smoke_rawtx_cmd}')
+
 def rpc(*args):
-    def serialize_rpc_arg(value):
-        if value is True:
-            return 'true'
-        if value is False:
-            return 'false'
-        if value is None:
-            return 'null'
-        if isinstance(value, (int, float)) and not isinstance(value, bool):
-            return str(value)
-        return value
-
-    def build_rpc_cmd(*rpc_args):
-        cmd = [
-            crowncli,
-            f'-datadir={datadir}',
-            '-rpcconnect=127.0.0.1',
-            f'-rpcport={rpc_port}',
-            f'-rpcuser={rpc_user}',
-            f'-rpcpassword={rpc_password}',
-        ] + [serialize_rpc_arg(a) for a in rpc_args]
-        forbidden = [item for item in cmd if item in ('True', 'False')]
-        if forbidden:
-            raise ValueError(f'forbidden Python bool literal in crown-cli argv: {forbidden}')
-        return cmd
-
-    smoke_cmd = build_rpc_cmd('getblock', '00' * 32, False)
-    smoke_rawtx_cmd = build_rpc_cmd('getrawtransaction', '00' * 32, 1)
-    if smoke_cmd[-1] != 'false' or 'True' in smoke_cmd or 'False' in smoke_cmd:
-        raise ValueError(f'getblock argv serialization regression: {smoke_cmd}')
-    if smoke_rawtx_cmd[-1] != '1' or 'True' in smoke_rawtx_cmd or 'False' in smoke_rawtx_cmd:
-        raise ValueError(f'getrawtransaction argv serialization regression: {smoke_rawtx_cmd}')
-
     cmd = build_rpc_cmd(*args)
     out = subprocess.check_output(cmd, text=True)
     try:
