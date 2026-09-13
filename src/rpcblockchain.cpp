@@ -475,11 +475,6 @@ Value exportutxosnapshot(const Array& params, bool fHelp)
         includeScriptAsm = params[1].get_bool();
     }
 
-    const CCoinsViewDB* coinsdb = ResolveCoinsViewDB(pcoinsTip);
-    if (coinsdb == NULL) {
-        throw JSONRPCError(RPC_INTERNAL_ERROR, "Unable to resolve coin database view for export");
-    }
-
     boost::filesystem::path outFile = boost::filesystem::system_complete(boost::filesystem::path(outPath));
     boost::filesystem::path outDir = outFile.parent_path();
     if (!outDir.empty() && !boost::filesystem::exists(outDir)) {
@@ -493,12 +488,7 @@ Value exportutxosnapshot(const Array& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Unable to open output file for writing");
     }
 
-    FlushStateToDisk();
-
     CCoinsStats stats;
-    if (!pcoinsTip->GetStats(stats)) {
-        throw JSONRPCError(RPC_INTERNAL_ERROR, "Failed to gather chainstate stats before export");
-    }
 
     struct ExportContext {
         std::ostream& stream;
@@ -589,8 +579,22 @@ Value exportutxosnapshot(const Array& params, bool fHelp)
         }
     };
 
-    ExportVisitor visitor(context, &writeError);
-    bool ok = coinsdb->ForEachCoin(boost::bind(&ExportVisitor::Visit, &visitor, boost::placeholders::_1, boost::placeholders::_2));
+    bool ok = false;
+    {
+        LOCK(cs_main);
+        const CCoinsViewDB* coinsdb = ResolveCoinsViewDB(pcoinsTip);
+        if (coinsdb == NULL) {
+            throw JSONRPCError(RPC_INTERNAL_ERROR, "Unable to resolve coin database view for export");
+        }
+
+        FlushStateToDisk();
+        if (!pcoinsTip->GetStats(stats)) {
+            throw JSONRPCError(RPC_INTERNAL_ERROR, "Failed to gather chainstate stats before export");
+        }
+
+        ExportVisitor visitor(context, &writeError);
+        ok = coinsdb->ForEachCoin(boost::bind(&ExportVisitor::Visit, &visitor, boost::placeholders::_1, boost::placeholders::_2));
+    }
 
     out.flush();
     if (!ok) {
