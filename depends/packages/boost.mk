@@ -27,7 +27,7 @@ endef
 
 define $(package)_preprocess_cmds
   for patch in $($(package)_patches); do \
-    patch -p1 < $($(package)_patch_dir)/$$patch || exit 1; \
+    patch -p1 < $($(package)_patch_dir)/$$$$patch || exit 1; \
   done && \
   echo "using $(boost_toolset_$(host_os)) : : $($(package)_cxx) : <cxxflags>\"$($(package)_cxxflags) $($(package)_cppflags)\" <linkflags>\"$($(package)_ldflags)\" <archiver>\"$(boost_archiver_$(host_os))\" <striper>\"$(host_STRIP)\"  <ranlib>\"$(host_RANLIB)\" <rc>\"$(host_WINDRES)\" : ;" > user-config.jam
 endef
