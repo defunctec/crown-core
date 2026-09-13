@@ -231,7 +231,7 @@ for raw in open(conf, encoding='utf-8', errors='ignore'):
     if not line:
         continue
     compact=re.sub(r'\s+', '', line.lower())
-    if compact.startswith('[') and compact.endswith(']') and compact in ('[main]','[test]','[regtest]'):
+    if compact.startswith('[') and compact.endswith(']') and compact in ('[main]','[test]','[regtest]','[devnet]'):
         bad.append(raw.rstrip('\n'))
         continue
     if re.match(r'^(testnet|regtest|devnet|chain)\s*=', compact):

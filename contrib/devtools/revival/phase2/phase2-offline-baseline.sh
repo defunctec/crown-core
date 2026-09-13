@@ -255,8 +255,9 @@ near_best = [t for t in tips if t.get('status') in ('active', 'valid-fork') and 
 
 selected_active = max(active, key=lambda t: as_int(t.get('height', -1), -1)) if active else None
 selected_fork = None
-if valid_forks:
-    selected_fork = sorted(valid_forks, key=lambda t: (abs(as_int(t.get('height', -1), -1) - best_height), -as_int(t.get('branchlen', 0), 0)))[0]
+candidate_forks = [t for t in near_best if t.get('status') == 'valid-fork']
+if candidate_forks:
+    selected_fork = sorted(candidate_forks, key=lambda t: (abs(as_int(t.get('height', -1), -1) - best_height), -as_int(t.get('branchlen', 0), 0)))[0]
 
 analysis = {
     'generated_at_utc': datetime.datetime.utcnow().isoformat() + 'Z',
