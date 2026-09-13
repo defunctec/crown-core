@@ -70,7 +70,7 @@ cleanup() {
 trap cleanup EXIT
 
 log "Starting offline baseline against disposable working copy: $DATADIR"
-start_crownd "$DATADIR" -testnet=0 -regtest=0 -listen=0 -dnsseed=0 -dns=0 -discover=0 -upnp=0 -connect=0 -maxconnections=0 -onlynet=ipv4 -rpcbind=127.0.0.1 -rpcallowip=127.0.0.1
+start_crownd "$DATADIR" -testnet=0 -regtest=0 -listen=0 -dnsseed=0 -dns=0 -discover=0 -upnp=0 -maxconnections=0 -onlynet=ipv4 -rpcbind=127.0.0.1 -rpcallowip=127.0.0.1
 wait_rpc_ready "$DATADIR" 240 || die "crownd RPC did not become ready for offline baseline"
 
 rpc "$DATADIR" getblockchaininfo > "$OUTDIR/blockchaininfo.json"
@@ -345,15 +345,14 @@ if selected_active and selected_fork:
                     json.dump(full, fp, indent=2)
                 analysis['divergent_block_exports'][side_name].append(out_file)
 
-    aw = int(active_summary.get('chainwork') or '0', 16)
-    fw = int(fork_summary.get('chainwork') or '0', 16)
-    stronger = 'active' if aw > fw else ('competing' if fw > aw else 'equal')
-
     analysis['selected_pair'] = {
         'active_tip': active_summary,
         'competing_tip': fork_summary,
     }
     if ancestry_error is None:
+        aw = int(active_summary.get('chainwork') or '0', 16)
+        fw = int(fork_summary.get('chainwork') or '0', 16)
+        stronger = 'active' if aw > fw else ('competing' if fw > aw else 'equal')
         analysis['common_ancestor'] = common_ancestor
         analysis['first_divergent'] = {
             'active_branch': first_div_active,
@@ -368,9 +367,9 @@ if selected_active and selected_fork:
             'competing_tip_height': fork_summary.get('height'),
         }
         analysis['ancestry_resolution'] = {'resolved': True, 'error': None}
+        analysis['selection']['strictly_greater_chainwork_branch'] = stronger if stronger != 'equal' else None
     else:
         analysis['ancestry_resolution'] = {'resolved': False, 'error': ancestry_error}
-    analysis['selection']['strictly_greater_chainwork_branch'] = stronger if stronger != 'equal' else None
 
 with open(out_path, 'w', encoding='utf-8') as fp:
     json.dump(analysis, fp, indent=2)
