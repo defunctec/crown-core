@@ -154,8 +154,8 @@ except Exception:
 parts=[p.decode("utf-8", errors="ignore") for p in raw.split(b"\x00") if p]
 if not parts:
     raise SystemExit(1)
-exe=os.path.basename(parts[0]).lower()
-if "crownd" not in exe:
+crownd_seen = any("crownd" in os.path.basename(p).lower() for p in parts)
+if not crownd_seen:
     raise SystemExit(1)
 for i,arg in enumerate(parts):
     if arg.startswith('-datadir='):
@@ -262,10 +262,14 @@ start_crownd() {
         if [ -z "$pid" ] && [ -f "$datadir/crownd.phase2.pid" ]; then
           pid="$(tr -cd '0-9' < "$datadir/crownd.phase2.pid" || true)"
         fi
+        if [ -n "$pid" ] && ! phase2_pid_matches_datadir "$pid" "$datadir"; then
+          rm -f "$datadir/crownd.phase2.pid"
+          pid=""
+        fi
         if [ -n "$pid" ] && ! kill -0 "$pid" >/dev/null 2>&1; then
           break
         fi
-        if [ -n "$pid" ] && kill -0 "$pid" >/dev/null 2>&1; then
+        if [ -n "$pid" ] && kill -0 "$pid" >/dev/null 2>&1 && phase2_pid_matches_datadir "$pid" "$datadir"; then
           launched=1
           break
         fi
@@ -278,7 +282,7 @@ start_crownd() {
         break
       fi
       "$CROWNCLI_BIN" -datadir="$datadir" -rpcconnect=127.0.0.1 -rpcport="$rpc_port" -rpcuser="$rpc_user" -rpcpassword="$rpc_password" stop >/dev/null 2>&1 || true
-      if [ -n "$pid" ]; then
+      if [ -n "$pid" ] && phase2_pid_matches_datadir "$pid" "$datadir"; then
         kill "$pid" >/dev/null 2>&1 || true
         local shutdown_wait=0
         while [ "$shutdown_wait" -lt 10 ] && kill -0 "$pid" >/dev/null 2>&1; do
@@ -334,7 +338,7 @@ wait_rpc_ready() {
     if [ -n "$pid" ] && ! kill -0 "$pid" >/dev/null 2>&1; then
       local rediscovered_pid
       rediscovered_pid="$(phase2_find_crownd_pid_for_datadir "$datadir" || true)"
-      if [ -n "$rediscovered_pid" ] && [ "$rediscovered_pid" != "$pid" ]; then
+      if [ -n "$rediscovered_pid" ] && phase2_pid_matches_datadir "$rediscovered_pid" "$datadir"; then
         pid="$rediscovered_pid"
         printf '%s\n' "$pid" > "$datadir/crownd.phase2.pid"
       else
@@ -498,8 +502,8 @@ for cmdline_path in glob.glob('/proc/[0-9]*/cmdline'):
     parts = [p.decode('utf-8', errors='ignore') for p in raw.split(b'\x00') if p]
     if not parts:
         continue
-    exe = os.path.basename(parts[0]).lower()
-    if 'crownd' not in exe:
+    crownd_seen = any('crownd' in os.path.basename(p).lower() for p in parts)
+    if not crownd_seen:
         continue
     for i, arg in enumerate(parts):
         if arg.startswith('-datadir='):

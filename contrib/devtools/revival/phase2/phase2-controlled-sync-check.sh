@@ -180,7 +180,13 @@ PY
     break
   fi
 
-  sleep "$POLL_SECONDS"
+  REMAINING=$((MAX_RUNTIME_SECONDS - ELAPSED))
+  SLEEP_STEP="$POLL_SECONDS"
+  if [ "$REMAINING" -lt "$SLEEP_STEP" ]; then
+    SLEEP_STEP="$REMAINING"
+  fi
+  [ "$SLEEP_STEP" -gt 0 ] || break
+  sleep "$SLEEP_STEP"
 done
 
 rpc "$DATADIR" getblockchaininfo > "$OUTDIR/final-blockchaininfo.json"
