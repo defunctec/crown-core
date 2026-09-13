@@ -296,7 +296,6 @@ final_headers = final_bci.get('headers') if isinstance(final_bci.get('headers'),
 newer_blocks_exist = (
     final_height > start_height
     or (start_headers is not None and final_headers is not None and final_headers > start_headers)
-    or (final_height == start_height and final_hash != start_hash)
 )
 headers_blocks_equal = final_bci.get('headers') == final_bci.get('blocks')
 active_tip_entries=[x for x in chaintips if x.get('status')=='active'] if isinstance(chaintips,list) else []

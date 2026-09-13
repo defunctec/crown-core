@@ -471,7 +471,7 @@ assert_no_crownd_for_datadir() {
   fi
 
   if [ ! -d /proc ]; then
-    if command -v pgrep >/dev/null 2>&1; then
+    if command -v pgrep >/dev/null 2>&1 && command -v ps >/dev/null 2>&1; then
       while IFS= read -r candidate; do
         [ -n "$candidate" ] || continue
         local comm args
@@ -483,7 +483,7 @@ assert_no_crownd_for_datadir() {
         fi
       done < <(pgrep -f -- "crownd.*-datadir" || true)
     else
-      die "Cannot verify active crownd process for datadir safety: neither /proc nor pgrep is available"
+      die "Cannot verify active crownd process for datadir safety: /proc is unavailable and pgrep/ps are required"
     fi
     return 0
   fi

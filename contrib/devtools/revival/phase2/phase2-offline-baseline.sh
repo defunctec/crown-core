@@ -377,14 +377,15 @@ if selected_active and selected_fork:
         'active_tip': active_summary,
         'competing_tip': fork_summary,
     }
+    aw = parse_chainwork(active_summary.get('chainwork'))
+    fw = parse_chainwork(fork_summary.get('chainwork'))
+    if aw is not None and fw is not None:
+        stronger = 'active' if aw > fw else ('competing' if fw > aw else 'equal')
+        analysis['selection']['strictly_greater_chainwork_branch'] = stronger if stronger != 'equal' else None
+    else:
+        analysis['selection']['chainwork_comparison_error'] = 'missing or non-hex chainwork in selected tip summary'
+
     if ancestry_error is None:
-        aw = parse_chainwork(active_summary.get('chainwork'))
-        fw = parse_chainwork(fork_summary.get('chainwork'))
-        stronger = None
-        if aw is not None and fw is not None:
-            stronger = 'active' if aw > fw else ('competing' if fw > aw else 'equal')
-        else:
-            analysis['selection']['chainwork_comparison_error'] = 'missing or non-hex chainwork in selected tip summary'
         analysis['common_ancestor'] = common_ancestor
         analysis['first_divergent'] = {
             'active_branch': first_div_active,
@@ -399,8 +400,6 @@ if selected_active and selected_fork:
             'competing_tip_height': fork_summary.get('height'),
         }
         analysis['ancestry_resolution'] = {'resolved': True, 'error': None}
-        if stronger is not None:
-            analysis['selection']['strictly_greater_chainwork_branch'] = stronger if stronger != 'equal' else None
     else:
         analysis['ancestry_resolution'] = {'resolved': False, 'error': ancestry_error}
 
