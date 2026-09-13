@@ -20,6 +20,7 @@ This tooling is for local execution when `crown-old-chain.7z` is not available i
   - Verifies copied data does not share hard-linked inodes with the preserved source.
 - `phase2-offline-baseline.sh`
   - Starts `crownd` with networking disabled, IPv4-only loopback RPC binding, and exports baseline JSON artifacts.
+  - Also emits terminal-fork transaction/stakepointer forensics and a 90-day pre-failure stability-window analysis rooted only in the preserved archive plus local repository history.
 - `phase2-controlled-sync-check.sh`
   - Starts `crownd` with `-testnet=0 -regtest=0`, IPv4-only loopback RPC binding, and inbound-disabled peer settings (`-listen=0`, `-discover=0`, `-upnp=0`). Outbound networking is intentionally enabled for continuation checks (`-dnsseed=1`, `-dns=1`) and the script may connect to normal mainnet peers.
 
@@ -76,8 +77,21 @@ OFFLINE output directory:
 - `phase2-checkpoint-verification.json`
 - `phase2-fork-analysis.json`
 - `phase2-fork-history-evidence.json`
+- `phase2-terminal-fork-forensics.json`
+- `phase2-stability-window-analysis.json`
 - `phase2-fork-blocks/` (divergent-branch block JSON exports when available)
 - supporting captures (`blockchaininfo.json`, `tip-block.json`, etc.)
+
+`phase2-terminal-fork-forensics.json` records, for the selected active/valid-fork terminal pair:
+- raw/decoded transactions for the terminal divergent blocks
+- staking source outpoints and referenced stake-source transactions/vouts
+- raw block-signature and serialized stakepointer fields not exposed by `getblock`
+- reward/payment structure comparisons between the competing branches
+
+`phase2-stability-window-analysis.json` summarizes the 90 days before `2025-08-19` and reports:
+- active-chain block cadence and long-gap/stall candidates
+- competing branch activity, fork depths, and reconstructable reorg indicators
+- snapshot candidates around `2025-08-01`, `2025-07-01`, and the latest pre-instability point suggested by the preserved archive evidence
 
 SYNC output directory:
 - `phase2-sync-result.json`
