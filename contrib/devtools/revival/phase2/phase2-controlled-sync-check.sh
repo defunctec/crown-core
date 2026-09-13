@@ -22,6 +22,7 @@ POLL_SECONDS="30"
 MIN_RUNTIME_SECONDS="600"
 MAX_RUNTIME_SECONDS="3600"
 STAGNATION_POLLS="6"
+EXPECTED_MAINNET_GENESIS="0000000085370d5e122f64f4ab19c68614ff3df78c8d13cb814fd7e69a1dc6da"
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -91,10 +92,11 @@ with open(sys.argv[1], encoding='utf-8') as f:
 PY
 )"
 [ "$CHAIN_NAME" = "main" ] || die "Expected mainnet chain, got: ${CHAIN_NAME:-UNKNOWN}"
+START_GENESIS="$(rpc "$DATADIR" getblockhash 0)"
+[ "$START_GENESIS" = "$EXPECTED_MAINNET_GENESIS" ] || die "Expected mainnet genesis $EXPECTED_MAINNET_GENESIS, got: ${START_GENESIS:-UNKNOWN}"
 START_HASH="$(rpc "$DATADIR" getbestblockhash)"
 START_HEIGHT="$(rpc "$DATADIR" getblockcount)"
 rpc "$DATADIR" getblock "$START_HASH" > "$OUTDIR/start-tip-block.json"
-START_GENESIS="$(rpc "$DATADIR" getblockhash 0)"
 
 python3 - "$OUTDIR" <<'PY'
 import json,sys
