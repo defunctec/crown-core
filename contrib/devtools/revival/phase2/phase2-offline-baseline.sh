@@ -1366,7 +1366,7 @@ if provisional_snapshot_candidate is not None:
 else:
     provisional_snapshot_decision['candidate_evidence'] = None
     provisional_snapshot_decision['resolved_block_matches_expected'] = False
-if not provisional_snapshot_decision['resolved_block_matches_expected']:
+if provisional_snapshot_candidate is not None and not provisional_snapshot_decision['resolved_block_matches_expected']:
     provisional_snapshot_decision['status'] = 'mismatch'
 
 analysis = {
