@@ -47,6 +47,14 @@ done
 [ -n "$DATADIR" ] || { usage; die "--datadir is required"; }
 require_cmd python3
 require_bins
+case "$POLL_SECONDS" in ''|*[!0-9]*) die "--poll-seconds must be a positive integer" ;; esac
+case "$MIN_RUNTIME_SECONDS" in ''|*[!0-9]*) die "--min-runtime-seconds must be a non-negative integer" ;; esac
+case "$MAX_RUNTIME_SECONDS" in ''|*[!0-9]*) die "--max-runtime-seconds must be a positive integer" ;; esac
+case "$STAGNATION_POLLS" in ''|*[!0-9]*) die "--stagnation-polls must be a positive integer" ;; esac
+[ "$POLL_SECONDS" -gt 0 ] || die "--poll-seconds must be > 0"
+[ "$MAX_RUNTIME_SECONDS" -gt 0 ] || die "--max-runtime-seconds must be > 0"
+[ "$STAGNATION_POLLS" -gt 0 ] || die "--stagnation-polls must be > 0"
+[ "$MAX_RUNTIME_SECONDS" -ge "$MIN_RUNTIME_SECONDS" ] || die "--max-runtime-seconds must be >= --min-runtime-seconds"
 
 DATADIR="$(abs_path "$DATADIR")"
 if is_archive_path "$DATADIR"; then
