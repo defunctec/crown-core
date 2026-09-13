@@ -1,0 +1,21 @@
+--- a/tools/build/src/engine/build.sh
++++ b/tools/build/src/engine/build.sh
+@@ -150,6 +150,7 @@ case $BOOST_JAM_TOOLSET in
+ 
+         *)
+         BOOST_JAM_CC=gcc
++        BOOST_JAM_OPT_JAM="$BOOST_JAM_OPT_JAM -std=gnu89"
+         esac
+     ;;
+ 
+--- a/tools/build/src/engine/build.jam
++++ b/tools/build/src/engine/build.jam
+@@ -196,7 +196,7 @@ toolset darwin cc :  "-o " : -D
+     : -L$(--python-lib[1]) -l$(--python-lib[2]) ;
+ ## GCC 2.x, 3.x, 4.x
+ toolset gcc gcc : "-o " : -D
+-    : -pedantic -fno-strict-aliasing
++    : -pedantic -fno-strict-aliasing -std=gnu89
+     [ opt --release : [ opt --symbols : -g : -s ] -O3 ]
+     [ opt --debug : -g -O0 -fno-inline ]
+     [ opt --profile : -O3 -g -pg ]
