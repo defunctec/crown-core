@@ -493,15 +493,17 @@ def top_entity_record(rank, row):
 
 top100 = [top_entity_record(i + 1, row) for i, row in enumerate(entity_rows[:100])]
 
-mandatory_largest_balances = [
+mandatory_largest_entities = [
     {
         "rank": top100[0]["rank"],
+        "entity_kind": top100[0]["entity_kind"],
         "entity": top100[0]["entity"],
         "balance_crw": top100[0]["balance_crw"],
         "note": "Mandatory priority entity #1 analyzed in top_20_detailed.",
     },
     {
         "rank": top100[1]["rank"],
+        "entity_kind": top100[1]["entity_kind"],
         "entity": top100[1]["entity"],
         "balance_crw": top100[1]["balance_crw"],
         "note": "Mandatory priority entity #2 analyzed in top_20_detailed.",
@@ -512,7 +514,7 @@ top_balances_report = {
     "snapshot": classification_registry["snapshot"],
     "top_20_detailed": top100[:20],
     "top_100_entities": top100,
-    "mandatory_largest_addresses": mandatory_largest_balances,
+    "mandatory_largest_entities": mandatory_largest_entities,
 }
 
 confirmed_or_probable_mn = []
@@ -688,6 +690,8 @@ else:
         raise SystemExit("invalid wrapped_crown_analysis.evidence")
 
     reserve_entities = wrapped_override.get("reserve_entities") or []
+    if not isinstance(reserve_entities, list):
+        raise SystemExit("wrapped_crown_analysis.reserve_entities must be a list")
     reserve_rows = []
     reserve_total = 0
     for r in reserve_entities:
@@ -712,6 +716,23 @@ else:
     wrapped_supply_sat = int(wrapped_supply_sat) if wrapped_supply_sat is not None else None
     delta_sat = reserve_total - wrapped_supply_sat if wrapped_supply_sat is not None else None
 
+    risk_statement = wrapped_override.get("potential_double_entitlement_risk") or {
+        "status": "UNKNOWN",
+        "details": "No explicit risk statement supplied in override.",
+    }
+    if not isinstance(risk_statement, dict):
+        raise SystemExit("wrapped_crown_analysis.potential_double_entitlement_risk must be an object")
+    risk_status = risk_statement.get("status")
+    risk_details = risk_statement.get("details")
+    if not isinstance(risk_status, str) or risk_status.strip() == "":
+        raise SystemExit("wrapped_crown_analysis.potential_double_entitlement_risk.status must be a non-empty string")
+    if not isinstance(risk_details, str) or risk_details.strip() == "":
+        raise SystemExit("wrapped_crown_analysis.potential_double_entitlement_risk.details must be a non-empty string")
+
+    unresolved_questions = wrapped_override.get("unresolved_questions") or []
+    if not isinstance(unresolved_questions, list) or not all(isinstance(x, str) and x.strip() for x in unresolved_questions):
+        raise SystemExit("wrapped_crown_analysis.unresolved_questions must be a list of non-empty strings")
+
     wrapped_crown_analysis = {
         "snapshot": classification_registry["snapshot"],
         "classification": {
@@ -726,11 +747,11 @@ else:
         "reported_native_backing_crw": crw_from_sats(reserve_total),
         "supply_backing_delta_sat": delta_sat,
         "supply_backing_delta_crw": crw_from_sats(delta_sat) if delta_sat is not None else None,
-        "potential_double_entitlement_risk": wrapped_override.get("potential_double_entitlement_risk") or {
-            "status": "UNKNOWN",
-            "details": "No explicit risk statement supplied in override.",
+        "potential_double_entitlement_risk": {
+            "status": risk_status,
+            "details": risk_details,
         },
-        "unresolved_questions": wrapped_override.get("unresolved_questions") or [],
+        "unresolved_questions": unresolved_questions,
     }
 
 summary = {
