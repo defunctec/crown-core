@@ -552,6 +552,10 @@ for group in control_entities_input:
             raise SystemExit(f"control group {gid} references unknown entity {key}")
         if key in override_map and row["classification"]["category"] != gcat:
             raise SystemExit(f"conflicting category between override and control group for {key}")
+        if key in override_map and row["classification"]["confidence"] != gconf:
+            raise SystemExit(f"conflicting confidence between override and control group for {key}")
+        if key in override_map and row["classification"]["evidence"] != gevidence:
+            raise SystemExit(f"conflicting evidence between override and control group for {key}")
         existing_control_id = row["classification"].get("control_entity_id")
         if existing_control_id is not None and existing_control_id != gid:
             raise SystemExit(f"conflicting control_entity_id between override and control group for {key}")
@@ -725,17 +729,37 @@ exchange_entries = [
         "unresolved_questions": row["classification"]["unresolved_questions"],
     }
     for row in entity_rows
-    if row["classification"]["category"] in {"exchange/custody", "Wrapped Crown reserve/custody", "stranded/inaccessible wrapped backing"}
+    if row["classification"]["category"] == "exchange/custody"
+]
+
+wrapped_related_entries = [
+    {
+        "entity_kind": row["entity_kind"],
+        "entity": row["entity"],
+        "balance_sat": row["balance_sat"],
+        "balance_crw": row["balance_crw"],
+        "snapshot_percent": row["snapshot_percent"],
+        "category": row["classification"]["category"],
+        "confidence": row["classification"]["confidence"],
+        "evidence": row["classification"]["evidence"],
+        "unresolved_questions": row["classification"]["unresolved_questions"],
+    }
+    for row in entity_rows
+    if row["classification"]["category"] in {"Wrapped Crown reserve/custody", "stranded/inaccessible wrapped backing"}
 ]
 
 exchange_custody_analysis = {
     "snapshot": classification_registry["snapshot"],
     "summary": {
-        "classified_exchange_or_wrapped_entities": len(exchange_entries),
-        "classified_exchange_or_wrapped_balance_sat": sum(x["balance_sat"] for x in exchange_entries),
-        "classified_exchange_or_wrapped_balance_crw": crw_from_sats(sum(x["balance_sat"] for x in exchange_entries)),
+        "classified_exchange_entities": len(exchange_entries),
+        "classified_exchange_balance_sat": sum(x["balance_sat"] for x in exchange_entries),
+        "classified_exchange_balance_crw": crw_from_sats(sum(x["balance_sat"] for x in exchange_entries)),
+        "classified_wrapped_related_entities": len(wrapped_related_entries),
+        "classified_wrapped_related_balance_sat": sum(x["balance_sat"] for x in wrapped_related_entries),
+        "classified_wrapped_related_balance_crw": crw_from_sats(sum(x["balance_sat"] for x in wrapped_related_entries)),
     },
-    "entities": exchange_entries,
+    "exchange_entities": exchange_entries,
+    "wrapped_related_entities": wrapped_related_entries,
     "notes": [
         "Only evidence-backed overrides are promoted to exchange/custody or wrapped categories.",
         "Absent direct evidence, entities remain category 'unknown'.",
