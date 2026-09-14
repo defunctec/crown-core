@@ -623,6 +623,7 @@ for idx, group in enumerate(control_entities_input):
         member_to_control[key] = gid
 
 control_groups = []
+grouped_entity_keys = set()
 for group in control_entities_input:
     gid = group["id"]
     glabel = group.get("label") or gid
@@ -644,6 +645,7 @@ for group in control_entities_input:
         row = entity_lookup.get(key)
         if row is None:
             raise SystemExit(f"control group {gid} references unknown entity {key}")
+        grouped_entity_keys.add(key)
         members.append({
             "entity_kind": row["entity_kind"],
             "entity": row["entity"],
@@ -676,7 +678,7 @@ control_entities = {
     "snapshot": classification_registry["snapshot"],
     "group_count": len(control_groups),
     "groups": sorted(control_groups, key=lambda x: (-x["total_balance_sat"], x["id"])),
-    "ungrouped_entity_count": len(entity_rows) - len(member_to_control),
+    "ungrouped_entity_count": len(entity_rows) - len(grouped_entity_keys),
 }
 
 if wrapped_override is None:
