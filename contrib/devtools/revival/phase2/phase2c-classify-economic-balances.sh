@@ -248,6 +248,10 @@ authoritative_10000_count = int(((raw_collateral.get("10000_crw") or {}).get("ut
 
 entity_overrides = attribution.get("entity_overrides") or []
 control_entities_input = attribution.get("control_entities") or []
+if not isinstance(entity_overrides, list):
+    raise SystemExit("entity_overrides must be a list when provided")
+if not isinstance(control_entities_input, list):
+    raise SystemExit("control_entities must be a list when provided")
 wrapped_override_present = "wrapped_crown_analysis" in attribution
 wrapped_override = attribution.get("wrapped_crown_analysis") if wrapped_override_present else None
 if wrapped_override_present and not isinstance(wrapped_override, dict):
@@ -288,20 +292,31 @@ for idx, item in enumerate(entity_overrides):
 
 entity_rows = []
 sha256 = hashlib.sha256()
+seen_entity_keys = set()
 
 with open(balances_jsonl_path, "rb") as f:
     for line_no, raw in enumerate(f, 1):
         sha256.update(raw)
-        payload = raw.decode("utf-8").strip()
+        try:
+            payload = raw.decode("utf-8").strip()
+        except UnicodeDecodeError as e:
+            raise SystemExit(f"invalid UTF-8 in balances JSONL at line {line_no}: {e}")
         if payload == "":
             continue
-        row = json.loads(payload)
+        try:
+            row = json.loads(payload)
+        except json.JSONDecodeError as e:
+            raise SystemExit(f"invalid JSON in balances JSONL at line {line_no}: {e}")
         ek = row.get("entity_kind")
         ent = row.get("entity")
         if ek not in {"address", "script"}:
             raise SystemExit(f"invalid entity_kind on line {line_no}")
         if not isinstance(ent, str) or ent == "":
             raise SystemExit(f"invalid entity on line {line_no}")
+        entity_key = f"{ek}:{ent}"
+        if entity_key in seen_entity_keys:
+            raise SystemExit(f"duplicate entity row in balances JSONL at line {line_no}: {entity_key}")
+        seen_entity_keys.add(entity_key)
 
         balance_sat = int(row.get("balance_sat", 0))
         if balance_sat < 0:
