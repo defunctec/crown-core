@@ -153,9 +153,11 @@ WRAPPED_STATUS = {
 
 
 def crw_from_sats(sats: int) -> str:
-    whole = sats // COIN
-    frac = sats % COIN
-    return f"{whole}.{frac:08d}"
+    sign = "-" if sats < 0 else ""
+    abs_sat = abs(sats)
+    whole = abs_sat // COIN
+    frac = abs_sat % COIN
+    return f"{sign}{whole}.{frac:08d}"
 
 
 def share_str(num: int, den: int) -> str:
@@ -372,6 +374,7 @@ with open(balances_jsonl_path, "rb") as f:
         )
 
 entity_rows.sort(key=lambda x: (-x["balance_sat"], x["entity_kind"], x["entity"]))
+entity_lookup = {f"{x['entity_kind']}:{x['entity']}": x for x in entity_rows}
 
 if len(entity_rows) != expected_positive_entities:
     raise SystemExit(f"positive-entity row mismatch: expected={expected_positive_entities} parsed={len(entity_rows)}")
@@ -612,7 +615,7 @@ for group in control_entities_input:
     total_collateral = 0
     for m in group.get("members"):
         key = f"{m['entity_kind']}:{m['entity']}"
-        row = next((x for x in entity_rows if f"{x['entity_kind']}:{x['entity']}" == key), None)
+        row = entity_lookup.get(key)
         if row is None:
             raise SystemExit(f"control group {gid} references unknown entity {key}")
         members.append({
@@ -693,7 +696,7 @@ else:
         if rek not in {"address", "script"} or not isinstance(re, str) or re == "":
             raise SystemExit("invalid wrapped reserve entity reference")
         key = f"{rek}:{re}"
-        row = next((x for x in entity_rows if f"{x['entity_kind']}:{x['entity']}" == key), None)
+        row = entity_lookup.get(key)
         if row is None:
             raise SystemExit(f"wrapped reserve references unknown entity: {key}")
         reserve_rows.append({
