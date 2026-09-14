@@ -574,35 +574,6 @@ node_collateral_analysis = {
     "collateral_sized_but_unconfirmed": unconfirmed_collateral,
 }
 
-exchange_entries = [
-    {
-        "entity_kind": row["entity_kind"],
-        "entity": row["entity"],
-        "balance_sat": row["balance_sat"],
-        "balance_crw": row["balance_crw"],
-        "snapshot_percent": row["snapshot_percent"],
-        "confidence": row["classification"]["confidence"],
-        "evidence": row["classification"]["evidence"],
-        "unresolved_questions": row["classification"]["unresolved_questions"],
-    }
-    for row in entity_rows
-    if row["classification"]["category"] in {"exchange/custody", "Wrapped Crown reserve/custody", "stranded/inaccessible wrapped backing"}
-]
-
-exchange_custody_analysis = {
-    "snapshot": classification_registry["snapshot"],
-    "summary": {
-        "classified_exchange_or_wrapped_entities": len(exchange_entries),
-        "classified_exchange_or_wrapped_balance_sat": sum(x["balance_sat"] for x in exchange_entries),
-        "classified_exchange_or_wrapped_balance_crw": crw_from_sats(sum(x["balance_sat"] for x in exchange_entries)),
-    },
-    "entities": exchange_entries,
-    "notes": [
-        "Only evidence-backed overrides are promoted to exchange/custody or wrapped categories.",
-        "Absent direct evidence, entities remain category 'unknown'.",
-    ],
-}
-
 member_to_control = {}
 seen_group_ids = set()
 for idx, group in enumerate(control_entities_input):
@@ -653,6 +624,14 @@ for group in control_entities_input:
         row = entity_lookup.get(key)
         if row is None:
             raise SystemExit(f"control group {gid} references unknown entity {key}")
+        if key in override_map and row["classification"]["category"] != gcat:
+            raise SystemExit(f"conflicting category between override and control group for {key}")
+        if key not in override_map:
+            row["classification"]["category"] = gcat
+            row["classification"]["confidence"] = gconf
+            row["classification"]["evidence"] = gevidence
+            row["classification"]["unresolved_questions"] = []
+        row["classification"]["control_entity_id"] = gid
         grouped_entity_keys.add(key)
         members.append({
             "entity_kind": row["entity_kind"],
@@ -687,6 +666,58 @@ control_entities = {
     "group_count": len(control_groups),
     "groups": sorted(control_groups, key=lambda x: (-x["total_balance_sat"], x["id"])),
     "ungrouped_entity_count": len(entity_rows) - len(grouped_entity_keys),
+}
+
+category_totals = {}
+for row in entity_rows:
+    cat = row["classification"]["category"]
+    category_totals.setdefault(cat, {"entity_count": 0, "balance_sat": 0})
+    category_totals[cat]["entity_count"] += 1
+    category_totals[cat]["balance_sat"] += row["balance_sat"]
+
+category_total_sat = sum(v["balance_sat"] for v in category_totals.values())
+if category_total_sat != authoritative_total_sat:
+    raise SystemExit("category totals do not reconcile to snapshot total")
+
+classification_registry["category_totals"] = [
+    {
+        "category": cat,
+        "entity_count": stats["entity_count"],
+        "balance_sat": stats["balance_sat"],
+        "balance_crw": crw_from_sats(stats["balance_sat"]),
+        "snapshot_share": share_str(stats["balance_sat"], authoritative_total_sat),
+        "snapshot_percent": percent_str(stats["balance_sat"], authoritative_total_sat),
+    }
+    for cat, stats in sorted(category_totals.items(), key=lambda kv: (-kv[1]["balance_sat"], kv[0]))
+]
+
+exchange_entries = [
+    {
+        "entity_kind": row["entity_kind"],
+        "entity": row["entity"],
+        "balance_sat": row["balance_sat"],
+        "balance_crw": row["balance_crw"],
+        "snapshot_percent": row["snapshot_percent"],
+        "confidence": row["classification"]["confidence"],
+        "evidence": row["classification"]["evidence"],
+        "unresolved_questions": row["classification"]["unresolved_questions"],
+    }
+    for row in entity_rows
+    if row["classification"]["category"] in {"exchange/custody", "Wrapped Crown reserve/custody", "stranded/inaccessible wrapped backing"}
+]
+
+exchange_custody_analysis = {
+    "snapshot": classification_registry["snapshot"],
+    "summary": {
+        "classified_exchange_or_wrapped_entities": len(exchange_entries),
+        "classified_exchange_or_wrapped_balance_sat": sum(x["balance_sat"] for x in exchange_entries),
+        "classified_exchange_or_wrapped_balance_crw": crw_from_sats(sum(x["balance_sat"] for x in exchange_entries)),
+    },
+    "entities": exchange_entries,
+    "notes": [
+        "Only evidence-backed overrides are promoted to exchange/custody or wrapped categories.",
+        "Absent direct evidence, entities remain category 'unknown'.",
+    ],
 }
 
 if not wrapped_override_present:
@@ -735,12 +766,16 @@ else:
     reserve_rows = []
     reserve_total = 0
     reserve_total_excluding_collateral = 0
+    seen_reserve_keys = set()
     for r in reserve_entities:
         rek = r.get("entity_kind")
         re = r.get("entity")
         if rek not in {"address", "script"} or not isinstance(re, str) or re == "":
             raise SystemExit("invalid wrapped reserve entity reference")
         key = f"{rek}:{re}"
+        if key in seen_reserve_keys:
+            raise SystemExit(f"duplicate wrapped reserve entity: {key}")
+        seen_reserve_keys.add(key)
         row = entity_lookup.get(key)
         if row is None:
             raise SystemExit(f"wrapped reserve references unknown entity: {key}")
