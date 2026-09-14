@@ -626,6 +626,9 @@ for group in control_entities_input:
             raise SystemExit(f"control group {gid} references unknown entity {key}")
         if key in override_map and row["classification"]["category"] != gcat:
             raise SystemExit(f"conflicting category between override and control group for {key}")
+        existing_control_id = row["classification"].get("control_entity_id")
+        if existing_control_id is not None and existing_control_id != gid:
+            raise SystemExit(f"conflicting control_entity_id between override and control group for {key}")
         if key not in override_map:
             row["classification"]["category"] = gcat
             row["classification"]["confidence"] = gconf
