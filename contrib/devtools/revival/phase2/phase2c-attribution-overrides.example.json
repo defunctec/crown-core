@@ -1,0 +1,60 @@
+{
+  "entity_overrides": [
+    {
+      "entity_kind": "address",
+      "entity": "CRW_EXAMPLE_ADDRESS",
+      "category": "exchange/custody",
+      "confidence": "HIGH CONFIDENCE",
+      "evidence": [
+        "docs/revival/example.md:10",
+        "https://example.com/source"
+      ],
+      "unresolved_questions": [
+        "Confirm whether this address is still active at the snapshot timestamp."
+      ],
+      "control_entity_id": "example-control-entity",
+      "node_collateral_label": "probable masternode collateral",
+      "node_collateral_confidence": "PROBABLE",
+      "notes": "Optional analyst note."
+    }
+  ],
+  "control_entities": [
+    {
+      "id": "example-control-entity",
+      "label": "Example custody cluster",
+      "category": "exchange/custody",
+      "confidence": "HIGH CONFIDENCE",
+      "evidence": [
+        "Authoritative attribution source citation"
+      ],
+      "members": [
+        {
+          "entity_kind": "address",
+          "entity": "CRW_EXAMPLE_ADDRESS"
+        }
+      ]
+    }
+  ],
+  "wrapped_crown_analysis": {
+    "status": "PARTIALLY VERIFIABLE",
+    "confidence": "PROBABLE",
+    "evidence": [
+      "Bridge contract citation",
+      "Custody key-status citation"
+    ],
+    "reserve_entities": [
+      {
+        "entity_kind": "address",
+        "entity": "CRW_RESERVE_ADDRESS"
+      }
+    ],
+    "wrapped_supply_sat": 0,
+    "potential_double_entitlement_risk": {
+      "status": "POSSIBLE",
+      "details": "Set after reconciling wrapped supply with native reserve holdings."
+    },
+    "unresolved_questions": [
+      "Can redemption still be executed with currently controlled keys?"
+    ]
+  }
+}
