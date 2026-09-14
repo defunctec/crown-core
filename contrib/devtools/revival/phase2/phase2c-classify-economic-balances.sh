@@ -241,6 +241,11 @@ if not all(checks.values()):
         json.dump(payload, f, indent=2)
     raise SystemExit(f"Phase 2C input verification failed; see {fail_path}")
 
+authoritative_total_sat = int(utxo_totals.get("total_value_sat", -1))
+authoritative_positive_entities = int(entity_summary.get("unique_positive_balance_entities", -1))
+authoritative_500_count = int(((raw_collateral.get("500_crw") or {}).get("utxo_count", -1)))
+authoritative_10000_count = int(((raw_collateral.get("10000_crw") or {}).get("utxo_count", -1)))
+
 entity_overrides = attribution.get("entity_overrides") or []
 control_entities_input = attribution.get("control_entities") or []
 wrapped_override = attribution.get("wrapped_crown_analysis") or None
@@ -262,6 +267,7 @@ for idx, item in enumerate(entity_overrides):
         "unresolved_questions": item.get("unresolved_questions") or [],
         "control_entity_id": item.get("control_entity_id"),
         "node_collateral_label": item.get("node_collateral_label"),
+        "node_collateral_type": item.get("node_collateral_type"),
         "node_collateral_confidence": item.get("node_collateral_confidence"),
         "notes": item.get("notes"),
     }
@@ -269,8 +275,12 @@ for idx, item in enumerate(entity_overrides):
         raise SystemExit(f"invalid evidence list for override {key}")
     if override["node_collateral_confidence"] is not None:
         override["node_collateral_confidence"] = normalize_confidence(str(override["node_collateral_confidence"]))
+    if override["node_collateral_type"] is not None and override["node_collateral_type"] not in {"masternode", "systemnode", "both"}:
+        raise SystemExit(f"invalid node_collateral_type for override {key}")
     if override["node_collateral_label"] is not None and not isinstance(override["node_collateral_label"], str):
         raise SystemExit(f"invalid node_collateral_label for override {key}")
+    if override["node_collateral_label"] is not None and override["node_collateral_type"] is None:
+        raise SystemExit(f"override {key} sets node_collateral_label but not node_collateral_type")
     override_map[key] = override
 
 entity_rows = []
@@ -339,11 +349,12 @@ with open(balances_jsonl_path, "rb") as f:
 
         if override is not None and override.get("node_collateral_label"):
             label = override["node_collateral_label"]
+            collateral_type = override.get("node_collateral_type")
             nconf = override.get("node_collateral_confidence") or confidence
-            if "masternode" in label.lower():
+            if collateral_type in {"masternode", "both"}:
                 node_collateral["masternode"]["assessment"] = label
                 node_collateral["masternode"]["confidence"] = nconf
-            if "systemnode" in label.lower():
+            if collateral_type in {"systemnode", "both"}:
                 node_collateral["systemnode"]["assessment"] = label
                 node_collateral["systemnode"]["confidence"] = nconf
 
@@ -353,8 +364,8 @@ with open(balances_jsonl_path, "rb") as f:
                 "entity": ent,
                 "balance_sat": balance_sat,
                 "balance_crw": crw_from_sats(balance_sat),
-                "snapshot_share": share_str(balance_sat, expected_total_sat),
-                "snapshot_percent": percent_str(balance_sat, expected_total_sat),
+                "snapshot_share": share_str(balance_sat, authoritative_total_sat),
+                "snapshot_percent": percent_str(balance_sat, authoritative_total_sat),
                 "utxo_count": utxo_count,
                 "candidate_10000_utxo_count": c10k,
                 "candidate_500_utxo_count": c500,
@@ -376,19 +387,19 @@ with open(balances_jsonl_path, "rb") as f:
 entity_rows.sort(key=lambda x: (-x["balance_sat"], x["entity_kind"], x["entity"]))
 entity_lookup = {f"{x['entity_kind']}:{x['entity']}": x for x in entity_rows}
 
-if len(entity_rows) != expected_positive_entities:
-    raise SystemExit(f"positive-entity row mismatch: expected={expected_positive_entities} parsed={len(entity_rows)}")
+if len(entity_rows) != authoritative_positive_entities:
+    raise SystemExit(f"positive-entity row mismatch: expected={authoritative_positive_entities} parsed={len(entity_rows)}")
 
 recomputed_total_sat = sum(x["balance_sat"] for x in entity_rows)
-if recomputed_total_sat != expected_total_sat:
-    raise SystemExit(f"balance sum mismatch: expected={expected_total_sat} parsed={recomputed_total_sat}")
+if recomputed_total_sat != authoritative_total_sat:
+    raise SystemExit(f"balance sum mismatch: expected={authoritative_total_sat} parsed={recomputed_total_sat}")
 
 recomputed_500 = sum(x["candidate_500_utxo_count"] for x in entity_rows)
 recomputed_10000 = sum(x["candidate_10000_utxo_count"] for x in entity_rows)
-if recomputed_500 != expected_500_count:
-    raise SystemExit(f"500-count mismatch: expected={expected_500_count} parsed={recomputed_500}")
-if recomputed_10000 != expected_10000_count:
-    raise SystemExit(f"10000-count mismatch: expected={expected_10000_count} parsed={recomputed_10000}")
+if recomputed_500 != authoritative_500_count:
+    raise SystemExit(f"500-count mismatch: expected={authoritative_500_count} parsed={recomputed_500}")
+if recomputed_10000 != authoritative_10000_count:
+    raise SystemExit(f"10000-count mismatch: expected={authoritative_10000_count} parsed={recomputed_10000}")
 
 category_totals = {}
 for row in entity_rows:
@@ -398,7 +409,7 @@ for row in entity_rows:
     category_totals[cat]["balance_sat"] += row["balance_sat"]
 
 category_total_sat = sum(v["balance_sat"] for v in category_totals.values())
-if category_total_sat != expected_total_sat:
+if category_total_sat != authoritative_total_sat:
     raise SystemExit("category totals do not reconcile to snapshot total")
 
 classification_registry = {
@@ -406,9 +417,9 @@ classification_registry = {
         "height": expected_height,
         "hash": expected_hash,
         "timestamp_utc": expected_timestamp,
-        "total_value_sat": expected_total_sat,
-        "total_value_crw": crw_from_sats(expected_total_sat),
-        "positive_balance_entities": expected_positive_entities,
+        "total_value_sat": authoritative_total_sat,
+        "total_value_crw": crw_from_sats(authoritative_total_sat),
+        "positive_balance_entities": authoritative_positive_entities,
     },
     "provenance_verification": {
         "phase2b_input_verified": "YES",
@@ -424,8 +435,8 @@ classification_registry = {
             "entity_count": stats["entity_count"],
             "balance_sat": stats["balance_sat"],
             "balance_crw": crw_from_sats(stats["balance_sat"]),
-            "snapshot_share": share_str(stats["balance_sat"], expected_total_sat),
-            "snapshot_percent": percent_str(stats["balance_sat"], expected_total_sat),
+            "snapshot_share": share_str(stats["balance_sat"], authoritative_total_sat),
+            "snapshot_percent": percent_str(stats["balance_sat"], authoritative_total_sat),
         }
         for cat, stats in sorted(category_totals.items(), key=lambda kv: (-kv[1]["balance_sat"], kv[0]))
     ],
@@ -461,7 +472,7 @@ collateral_concentration = {
         "collateral_holding_entity_count": len(collateral_holders),
         "collateral_holding_balance_sat": sum(x["balance_sat"] for x in collateral_holders),
         "collateral_holding_balance_crw": crw_from_sats(sum(x["balance_sat"] for x in collateral_holders)),
-        "collateral_holding_balance_snapshot_percent": percent_str(sum(x["balance_sat"] for x in collateral_holders), expected_total_sat),
+        "collateral_holding_balance_snapshot_percent": percent_str(sum(x["balance_sat"] for x in collateral_holders), authoritative_total_sat),
         "raw_candidate_500_utxo_count": recomputed_500,
         "raw_candidate_10000_utxo_count": recomputed_10000,
     },
@@ -590,11 +601,15 @@ exchange_custody_analysis = {
 }
 
 member_to_control = {}
+seen_group_ids = set()
 for idx, group in enumerate(control_entities_input):
     gid = group.get("id")
     members = group.get("members") or []
     if not isinstance(gid, str) or gid == "":
         raise SystemExit(f"invalid control_entities[{idx}].id")
+    if gid in seen_group_ids:
+        raise SystemExit(f"duplicate control entity id: {gid}")
+    seen_group_ids.add(gid)
     if not isinstance(members, list) or len(members) == 0:
         raise SystemExit(f"control_entities[{idx}] requires non-empty members")
     for m in members:
@@ -650,7 +665,7 @@ for group in control_entities_input:
             "member_count": len(members),
             "total_balance_sat": total,
             "total_balance_crw": crw_from_sats(total),
-            "snapshot_percent": percent_str(total, expected_total_sat),
+            "snapshot_percent": percent_str(total, authoritative_total_sat),
             "total_collateral_sized_sat": total_collateral,
             "total_collateral_sized_crw": crw_from_sats(total_collateral),
             "members": members,
@@ -676,8 +691,10 @@ if wrapped_override is None:
             ],
         },
         "reserve_entities": [],
-        "reported_wrapped_supply": None,
+        "reported_wrapped_supply_sat": None,
+        "reported_wrapped_supply_crw": None,
         "reported_native_backing_sat": None,
+        "reported_native_backing_crw": None,
         "supply_backing_delta_sat": None,
         "potential_double_entitlement_risk": {
             "status": "UNKNOWN",
@@ -766,18 +783,18 @@ else:
 summary = {
     "status": "pass",
     "PHASE_2B_INPUT_VERIFIED": "YES",
-    "TOTAL_SNAPSHOT_CRW": crw_from_sats(expected_total_sat),
-    "TOTAL_SNAPSHOT_SAT": expected_total_sat,
+    "TOTAL_SNAPSHOT_CRW": crw_from_sats(authoritative_total_sat),
+    "TOTAL_SNAPSHOT_SAT": authoritative_total_sat,
     "validation": {
         "phase2b_input_provenance": checks,
-        "positive_entities_preserved": len(entity_rows) == expected_positive_entities,
-        "category_mutual_exclusion_reconciles_total": category_total_sat == expected_total_sat,
+        "positive_entities_preserved": len(entity_rows) == authoritative_positive_entities,
+        "category_mutual_exclusion_reconciles_total": category_total_sat == authoritative_total_sat,
         "raw_collateral_reconciles": {
             "count_500": recomputed_500,
             "count_10000": recomputed_10000,
-            "expected_500": expected_500_count,
-            "expected_10000": expected_10000_count,
-            "ok": recomputed_500 == expected_500_count and recomputed_10000 == expected_10000_count,
+            "expected_500": authoritative_500_count,
+            "expected_10000": authoritative_10000_count,
+            "ok": recomputed_500 == authoritative_500_count and recomputed_10000 == authoritative_10000_count,
         },
         "integer_satoshi_arithmetic": True,
         "consensus_source_changed": False,

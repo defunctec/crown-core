@@ -13,6 +13,7 @@
         "Confirm whether this address is still active at the snapshot timestamp."
       ],
       "control_entity_id": "example-control-entity",
+      "node_collateral_type": "masternode",
       "node_collateral_label": "probable masternode collateral",
       "node_collateral_confidence": "PROBABLE",
       "notes": "Optional analyst note."
