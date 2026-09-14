@@ -705,6 +705,8 @@ if not wrapped_override_present:
         "reported_wrapped_supply_crw": None,
         "reported_native_backing_sat": None,
         "reported_native_backing_crw": None,
+        "reported_native_reserve_total_sat": None,
+        "reported_native_reserve_total_crw": None,
         "supply_backing_delta_sat": None,
         "potential_double_entitlement_risk": {
             "status": "UNKNOWN",
@@ -732,6 +734,7 @@ else:
         raise SystemExit("wrapped_crown_analysis.reserve_entities must be a list")
     reserve_rows = []
     reserve_total = 0
+    reserve_total_excluding_collateral = 0
     for r in reserve_entities:
         rek = r.get("entity_kind")
         re = r.get("entity")
@@ -747,12 +750,17 @@ else:
             "balance_sat": row["balance_sat"],
             "balance_crw": row["balance_crw"],
             "snapshot_percent": row["snapshot_percent"],
+            "collateral_sized_total_sat": row["collateral_sized_total_sat"],
+            "collateral_sized_total_crw": row["collateral_sized_total_crw"],
+            "balance_excluding_collateral_sat": row["balance_sat"] - row["collateral_sized_total_sat"],
+            "balance_excluding_collateral_crw": crw_from_sats(row["balance_sat"] - row["collateral_sized_total_sat"]),
         })
         reserve_total += row["balance_sat"]
+        reserve_total_excluding_collateral += row["balance_sat"] - row["collateral_sized_total_sat"]
 
     wrapped_supply_sat = wrapped_override.get("wrapped_supply_sat")
     wrapped_supply_sat = int(wrapped_supply_sat) if wrapped_supply_sat is not None else None
-    delta_sat = reserve_total - wrapped_supply_sat if wrapped_supply_sat is not None else None
+    delta_sat = reserve_total_excluding_collateral - wrapped_supply_sat if wrapped_supply_sat is not None else None
 
     risk_statement = wrapped_override.get("potential_double_entitlement_risk") or {
         "status": "UNKNOWN",
@@ -781,8 +789,10 @@ else:
         "reserve_entities": reserve_rows,
         "reported_wrapped_supply_sat": wrapped_supply_sat,
         "reported_wrapped_supply_crw": crw_from_sats(wrapped_supply_sat) if wrapped_supply_sat is not None else None,
-        "reported_native_backing_sat": reserve_total,
-        "reported_native_backing_crw": crw_from_sats(reserve_total),
+        "reported_native_backing_sat": reserve_total_excluding_collateral,
+        "reported_native_backing_crw": crw_from_sats(reserve_total_excluding_collateral),
+        "reported_native_reserve_total_sat": reserve_total,
+        "reported_native_reserve_total_crw": crw_from_sats(reserve_total),
         "supply_backing_delta_sat": delta_sat,
         "supply_backing_delta_crw": crw_from_sats(delta_sat) if delta_sat is not None else None,
         "potential_double_entitlement_risk": {
