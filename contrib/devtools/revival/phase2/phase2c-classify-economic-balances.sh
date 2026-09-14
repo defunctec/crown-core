@@ -304,7 +304,9 @@ with open(balances_jsonl_path, "rb") as f:
             raise SystemExit(f"invalid entity on line {line_no}")
 
         balance_sat = int(row.get("balance_sat", 0))
-        if balance_sat <= 0:
+        if balance_sat < 0:
+            raise SystemExit(f"negative balance_sat for entity {ek}:{ent} on line {line_no}")
+        if balance_sat == 0:
             continue
 
         c500 = int(row.get("candidate_500_utxo_count", 0))
@@ -693,6 +695,98 @@ classification_registry["category_totals"] = [
     }
     for cat, stats in sorted(category_totals.items(), key=lambda kv: (-kv[1]["balance_sat"], kv[0]))
 ]
+
+collateral_holders = [x for x in entity_rows if x["candidate_500_utxo_count"] > 0 or x["candidate_10000_utxo_count"] > 0]
+rank_by_10k = sorted(collateral_holders, key=lambda x: (-x["candidate_10000_utxo_count"], -x["balance_sat"], x["entity"]))
+rank_by_500 = sorted(collateral_holders, key=lambda x: (-x["candidate_500_utxo_count"], -x["balance_sat"], x["entity"]))
+rank_by_total = sorted(collateral_holders, key=lambda x: (-x["balance_sat"], -x["candidate_10000_utxo_count"], -x["candidate_500_utxo_count"], x["entity"]))
+
+collateral_concentration = {
+    "snapshot": classification_registry["snapshot"],
+    "summary": {
+        "collateral_holding_entity_count": len(collateral_holders),
+        "collateral_holding_balance_sat": sum(x["balance_sat"] for x in collateral_holders),
+        "collateral_holding_balance_crw": crw_from_sats(sum(x["balance_sat"] for x in collateral_holders)),
+        "collateral_holding_balance_snapshot_percent": percent_str(sum(x["balance_sat"] for x in collateral_holders), authoritative_total_sat),
+        "raw_candidate_500_utxo_count": recomputed_500,
+        "raw_candidate_10000_utxo_count": recomputed_10000,
+    },
+    "largest_holders_of_10000_utxos": [collateral_row(x) for x in rank_by_10k if x["candidate_10000_utxo_count"] > 0][:100],
+    "largest_holders_of_500_utxos": [collateral_row(x) for x in rank_by_500 if x["candidate_500_utxo_count"] > 0][:100],
+    "largest_total_balances_among_collateral_holders": [collateral_row(x) for x in rank_by_total][:100],
+}
+
+top100 = [top_entity_record(i + 1, row) for i, row in enumerate(entity_rows[:100])]
+mandatory_largest_entities = []
+if len(top100) >= 1:
+    mandatory_largest_entities.append(
+        {
+            "rank": top100[0]["rank"],
+            "entity_kind": top100[0]["entity_kind"],
+            "entity": top100[0]["entity"],
+            "balance_crw": top100[0]["balance_crw"],
+            "note": "Mandatory priority entity #1 analyzed in top_20_detailed.",
+        }
+    )
+if len(top100) >= 2:
+    mandatory_largest_entities.append(
+        {
+            "rank": top100[1]["rank"],
+            "entity_kind": top100[1]["entity_kind"],
+            "entity": top100[1]["entity"],
+            "balance_crw": top100[1]["balance_crw"],
+            "note": "Mandatory priority entity #2 analyzed in top_20_detailed.",
+        }
+    )
+top_balances_report = {
+    "snapshot": classification_registry["snapshot"],
+    "top_20_detailed": top100[:20],
+    "top_100_entities": top100,
+    "mandatory_largest_entities": mandatory_largest_entities,
+}
+
+confirmed_or_probable_mn = []
+confirmed_or_probable_sn = []
+unconfirmed_collateral = []
+for row in collateral_holders:
+    mn = row["node_collateral_assessment"]["masternode"]
+    sn = row["node_collateral_assessment"]["systemnode"]
+
+    if row["candidate_10000_utxo_count"] > 0 and mn["assessment"] != "collateral-sized but unconfirmed" and mn["confidence"] in {"CONFIRMED", "HIGH CONFIDENCE", "PROBABLE"}:
+        rec = collateral_row(row)
+        rec["masternode_assessment"] = mn["assessment"]
+        rec["masternode_confidence"] = mn["confidence"]
+        confirmed_or_probable_mn.append(rec)
+    if row["candidate_500_utxo_count"] > 0 and sn["assessment"] != "collateral-sized but unconfirmed" and sn["confidence"] in {"CONFIRMED", "HIGH CONFIDENCE", "PROBABLE"}:
+        rec = collateral_row(row)
+        rec["systemnode_assessment"] = sn["assessment"]
+        rec["systemnode_confidence"] = sn["confidence"]
+        confirmed_or_probable_sn.append(rec)
+
+    if (row["candidate_10000_utxo_count"] > 0 and mn["assessment"] == "collateral-sized but unconfirmed") or (
+        row["candidate_500_utxo_count"] > 0 and sn["assessment"] == "collateral-sized but unconfirmed"
+    ):
+        unconfirmed_collateral.append(
+            {
+                **collateral_row(row),
+                "masternode_assessment": mn["assessment"],
+                "masternode_confidence": mn["confidence"],
+                "systemnode_assessment": sn["assessment"],
+                "systemnode_confidence": sn["confidence"],
+            }
+        )
+
+node_collateral_analysis = {
+    "snapshot": classification_registry["snapshot"],
+    "summary": {
+        "confirmed_or_probable_masternode_entities": len(confirmed_or_probable_mn),
+        "confirmed_or_probable_systemnode_entities": len(confirmed_or_probable_sn),
+        "collateral_sized_unconfirmed_entities": len(unconfirmed_collateral),
+    },
+    "confirmed_or_probable_masternode_collateral": confirmed_or_probable_mn,
+    "confirmed_or_probable_systemnode_collateral": confirmed_or_probable_sn,
+    "collateral_sized_but_unconfirmed": unconfirmed_collateral,
+}
 
 exchange_entries = [
     {
