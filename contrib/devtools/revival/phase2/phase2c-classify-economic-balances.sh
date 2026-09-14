@@ -493,22 +493,27 @@ def top_entity_record(rank, row):
 
 top100 = [top_entity_record(i + 1, row) for i, row in enumerate(entity_rows[:100])]
 
-mandatory_largest_entities = [
-    {
-        "rank": top100[0]["rank"],
-        "entity_kind": top100[0]["entity_kind"],
-        "entity": top100[0]["entity"],
-        "balance_crw": top100[0]["balance_crw"],
-        "note": "Mandatory priority entity #1 analyzed in top_20_detailed.",
-    },
-    {
-        "rank": top100[1]["rank"],
-        "entity_kind": top100[1]["entity_kind"],
-        "entity": top100[1]["entity"],
-        "balance_crw": top100[1]["balance_crw"],
-        "note": "Mandatory priority entity #2 analyzed in top_20_detailed.",
-    },
-] if len(top100) >= 2 else []
+mandatory_largest_entities = []
+if len(top100) >= 1:
+    mandatory_largest_entities.append(
+        {
+            "rank": top100[0]["rank"],
+            "entity_kind": top100[0]["entity_kind"],
+            "entity": top100[0]["entity"],
+            "balance_crw": top100[0]["balance_crw"],
+            "note": "Mandatory priority entity #1 analyzed in top_20_detailed.",
+        }
+    )
+if len(top100) >= 2:
+    mandatory_largest_entities.append(
+        {
+            "rank": top100[1]["rank"],
+            "entity_kind": top100[1]["entity_kind"],
+            "entity": top100[1]["entity"],
+            "balance_crw": top100[1]["balance_crw"],
+            "note": "Mandatory priority entity #2 analyzed in top_20_detailed.",
+        }
+    )
 
 top_balances_report = {
     "snapshot": classification_registry["snapshot"],
@@ -615,8 +620,12 @@ for group in control_entities_input:
     members = []
     total = 0
     total_collateral = 0
+    seen_keys = set()
     for m in group.get("members"):
         key = f"{m['entity_kind']}:{m['entity']}"
+        if key in seen_keys:
+            raise SystemExit(f"duplicate member within control group {gid}: {key}")
+        seen_keys.add(key)
         row = entity_lookup.get(key)
         if row is None:
             raise SystemExit(f"control group {gid} references unknown entity {key}")
