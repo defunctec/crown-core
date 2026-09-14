@@ -248,7 +248,10 @@ authoritative_10000_count = int(((raw_collateral.get("10000_crw") or {}).get("ut
 
 entity_overrides = attribution.get("entity_overrides") or []
 control_entities_input = attribution.get("control_entities") or []
-wrapped_override = attribution.get("wrapped_crown_analysis") or None
+wrapped_override_present = "wrapped_crown_analysis" in attribution
+wrapped_override = attribution.get("wrapped_crown_analysis") if wrapped_override_present else None
+if wrapped_override_present and not isinstance(wrapped_override, dict):
+    raise SystemExit("wrapped_crown_analysis must be an object when provided")
 
 override_map = {}
 for idx, item in enumerate(entity_overrides):
@@ -622,6 +625,11 @@ for idx, group in enumerate(control_entities_input):
             raise SystemExit(f"entity listed in multiple control entities: {key}")
         member_to_control[key] = gid
 
+for row in entity_rows:
+    key = f"{row['entity_kind']}:{row['entity']}"
+    if row["classification"].get("control_entity_id") is None and key in member_to_control:
+        row["classification"]["control_entity_id"] = member_to_control[key]
+
 control_groups = []
 grouped_entity_keys = set()
 for group in control_entities_input:
@@ -681,7 +689,7 @@ control_entities = {
     "ungrouped_entity_count": len(entity_rows) - len(grouped_entity_keys),
 }
 
-if wrapped_override is None:
+if not wrapped_override_present:
     wrapped_status = "UNKNOWN"
     wrapped_crown_analysis = {
         "snapshot": classification_registry["snapshot"],
@@ -709,6 +717,8 @@ if wrapped_override is None:
         ],
     }
 else:
+    if "status" not in wrapped_override or "confidence" not in wrapped_override or "evidence" not in wrapped_override:
+        raise SystemExit("wrapped_crown_analysis must include status, confidence, and evidence when provided")
     wrapped_status = wrapped_override.get("status", "UNKNOWN")
     if wrapped_status not in WRAPPED_STATUS:
         raise SystemExit(f"invalid wrapped_crown_analysis.status: {wrapped_status}")
