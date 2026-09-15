@@ -18,6 +18,43 @@ Why this answer:
 
 ---
 
+## Second-pass validation update (source-level)
+
+This document was revalidated as a second-pass architecture check against a pinned Bitcoin Core baseline.
+
+### Pinned Bitcoin baseline for all patch-surface conclusions
+
+- **Repository:** https://github.com/bitcoin/bitcoin
+- **Tag:** `v31.1`
+- **Commit SHA:** `9be056a8a72b624dae9623b2f7bded92c2a21c91`
+- **Commit URL:** https://github.com/bitcoin/bitcoin/commit/9be056a8a72b624dae9623b2f7bded92c2a21c91
+- **Commit date:** `2026-07-06`
+
+**All patch-surface conclusions in this document refer to Bitcoin Core v31.1 at the commit above.**
+
+### Source-anchored consensus/PoW dependency map (Bitcoin Core v31.1)
+
+| Area | Concrete source anchors | Why it matters for Crown PoS/finality patch surface | Patch class |
+|---|---|---|---|
+| Header schema | `src/primitives/block.h` (`CBlockHeader::nBits`, `nNonce`) | Header format is PoW-shaped by default; Crown must redefine/repurpose fields or add consensus extension commitment path. | PERMANENT MODIFICATION |
+| PoW target/retarget rules | `src/pow.cpp` (`GetNextWorkRequired`, `CalculateNextWorkRequired`, `CheckProofOfWorkImpl`, `DeriveTarget`) | Direct PoW dependency must be replaced by validator/finality validity logic. | REPLACE |
+| Work-based chain metric | `src/chain.h` (`CBlockIndex::nChainWork`, `GetBlockProof`) | Native chain scoring is accumulated-work-centric; Crown needs finality-first scoring/selection semantics. | PERMANENT MODIFICATION |
+| Header accept + best-chain activation | `src/validation.cpp` (`AcceptBlockHeader`, `ProcessNewBlockHeaders`, `FindMostWorkChain`, `ActivateBestChainStep`) | Core branch-choice path is where finality certificates and validator-set commitments must be enforced. | CROWN CONSENSUS HOOK |
+| Headers sync + peer download protection | `src/net_processing.cpp` (`ProcessHeadersMessage`, `FindNextBlocksToDownload`, chainwork-based anti-DoS thresholds) | Current peer selection/protection assumes work-comparable headers; Crown needs equivalent anti-DoS and progress scoring without PoW chainwork trust model. | PERMANENT MODIFICATION |
+| Assumevalid + minimum chainwork + AssumeUTXO roots | `src/kernel/chainparams.cpp` (`consensus.defaultAssumeValid`, `consensus.nMinimumChainWork`, `m_assumeutxo_data`) and `src/kernel/chainparams.h` (`AssumeutxoData`) | Hardcoded trust anchors remain useful but must be tied to finalized Crown checkpoints/validator commitments instead of PoW-work expectations. | CROWN CONSENSUS HOOK |
+| Chainstate load/reindex/store boundary | `src/node/blockstorage.cpp` (`LoadBlockIndex`, `nChainWork` reconstruction) and `src/validation.cpp` (`LoadChainTip`, `LoadExternalBlockFile`) | Persistence layer stays reusable, but consensus-derived index fields and tip-selection invariants change. | VERY SMALL ADAPTER + CROWN CONSENSUS HOOK |
+| Mining RPC surface | `src/rpc/mining.cpp` (`getblocktemplate`, PoW-oriented mining interfaces) | PoW miner APIs are non-goals for Crown successor and should be replaced by validator proposal/status APIs. | REPLACE |
+| Versionbits/miner signaling | `src/versionbits.cpp` (`VersionBitsCache`, `ComputeBlockVersion`) | Activation logic can remain conceptually similar but signaling path should move from miner-centric assumptions to validator/finality governance path. | CROWN CONSENSUS HOOK |
+| Snapshot metadata + snapshot base anchoring | `src/node/utxo_snapshot.h/.cpp` (`SnapshotMetadata`, `WriteSnapshotBaseBlockhash`, `ReadSnapshotBaseBlockhash`) | Strong fit for Crown service-node distribution model if snapshot authenticity is bound to finalized consensus commitments. | VERY SMALL ADAPTER |
+| RPC exposure of consensus progress | `src/rpc/blockchain.cpp` (`chainwork` fields, assumeutxo validated state output) | User/operator interfaces that expose work-centric confidence need Crown finality-centric equivalents while preserving diagnostic utility. | PERMANENT MODIFICATION |
+
+### Second-pass maintainability implication
+
+The highest-risk permanent divergence zone is **validation + net_processing + chain index semantics**.  
+The lowest-risk/highest-reuse zone remains **transaction/script/witness/wallet/PSBT/descriptor/mempool policy/storage primitives** if consensus hooks are tightly isolated.
+
+---
+
 ## 1) Modern Bitcoin consensus boundary (what must change vs what should stay)
 
 Target architecture is **Bitcoin Core-derived execution + Crown consensus adapter**, not a legacy Crown extension.
@@ -133,6 +170,17 @@ Assume bootstrap set size = 4 validators, BFT threshold = 3/4 voting power.
 ---
 
 ## 6) Final recommendation
+
+### Second-pass verdict on first-pass hypothesis
+
+**Verdict: upheld.**  
+The first-pass recommendation (Tendermint-style preferred, HotStuff acceptable alternative) remains justified after source-level mapping to Bitcoin Core v31.1.
+
+Reason from patch-surface evidence:
+
+1. For both Tendermint-style and HotStuff-style designs, the unavoidable permanent edits are concentrated in the same Bitcoin modules: `validation.cpp`, `net_processing.cpp`, `chain.h`/chain selection semantics, PoW replacement, and mining RPC replacement.
+2. Both preserve the same large reusable upstream core: transaction/script/witness stack, UTXO execution, wallet/PSBT/descriptors, mempool architecture, pruning/block storage, and AssumeUTXO machinery.
+3. Tendermint-style still has the lower implementation-complexity and operator-complexity profile for Crown’s bootstrap and near-term validator size, so it remains the lower-maintenance choice at equivalent Bitcoin patch surface.
 
 ### Preferred consensus family: Tendermint/CometBFT-style BFT PoS
 
@@ -254,3 +302,22 @@ Exclude from first PoC:
 6. **Can unpaid full/pruned nodes stay first-class independent validators?** Yes.
 7. **Can service/archive roles stay useful/rewarded without authority?** Yes, via cryptographically verifiable distribution.
 8. **Minimal PoC:** 4 validators + 1 independent full node on Bitcoin-derived execution with Tendermint-style finality adapter.
+
+---
+
+## Source reference index (Bitcoin Core v31.1)
+
+- https://github.com/bitcoin/bitcoin/blob/v31.1/src/primitives/block.h
+- https://github.com/bitcoin/bitcoin/blob/v31.1/src/pow.cpp
+- https://github.com/bitcoin/bitcoin/blob/v31.1/src/chain.h
+- https://github.com/bitcoin/bitcoin/blob/v31.1/src/validation.h
+- https://github.com/bitcoin/bitcoin/blob/v31.1/src/validation.cpp
+- https://github.com/bitcoin/bitcoin/blob/v31.1/src/net_processing.cpp
+- https://github.com/bitcoin/bitcoin/blob/v31.1/src/kernel/chainparams.h
+- https://github.com/bitcoin/bitcoin/blob/v31.1/src/kernel/chainparams.cpp
+- https://github.com/bitcoin/bitcoin/blob/v31.1/src/node/blockstorage.cpp
+- https://github.com/bitcoin/bitcoin/blob/v31.1/src/node/utxo_snapshot.h
+- https://github.com/bitcoin/bitcoin/blob/v31.1/src/node/utxo_snapshot.cpp
+- https://github.com/bitcoin/bitcoin/blob/v31.1/src/rpc/mining.cpp
+- https://github.com/bitcoin/bitcoin/blob/v31.1/src/rpc/blockchain.cpp
+- https://github.com/bitcoin/bitcoin/blob/v31.1/src/versionbits.cpp
