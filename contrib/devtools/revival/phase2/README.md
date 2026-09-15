@@ -32,6 +32,13 @@ This tooling is for local execution when `crown-old-chain.7z` is not available i
   - Streams JSONL line-by-line, validates parseability, recomputes totals in integer satoshis, and fails closed on reconciliation mismatch.
   - Produces standalone aggregation/distribution artifacts so Phase 2B analysis can be rerun independently of rewind/export.
   - Accepts optional `--raw-export-commit <git_commit>` so historical datasets can explicitly record the raw-export audit binary commit without regenerating the UTXO export.
+- `phase2c-classify-economic-balances.sh`
+  - Post-processing only: consumes existing `phase2b-*` artifacts and produces Phase 2C classification outputs without daemon start, rewind, or re-export.
+  - Verifies fixed Phase 2B provenance/constants (archive SHA256, raw-export commit, UTXO JSONL SHA256, snapshot totals/entity counts, and raw 500/10,000 collateral counts) before classification.
+  - Emits confidence-tagged per-entity classifications and dedicated reports for collateral concentration, top balances, node-collateral interpretation, exchange/custody findings, wrapped-reserve analysis, control entities, and final summary.
+  - Supports optional evidence overrides (`--attribution-json`) for evidence-backed exchange/custody, wrapped, and control-entity attribution; defaults to `unknown` when evidence is absent.
+- `phase2c-attribution-overrides.example.json`
+  - Example schema for optional `--attribution-json` evidence input used by Phase 2C classification.
 
 Both runtime scripts reject datadirs whose `crown.conf` contains explicit chain-selection settings (`testnet=...`, `regtest=...`, `devnet=...`, `chain=...`, or network section headers).
 `-devnet=0` is intentionally **not** used: in this Crown codebase, `-devnet` is a named-network selector, so `-devnet=0` selects/creates devnet `0` instead of disabling devnet.
@@ -88,6 +95,15 @@ contrib/devtools/revival/phase2/phase2b-analyze-utxo-snapshot.sh \
   --evidence-dir /mnt/c/crown/phase2-work/phase2b-output \
   --outdir /mnt/c/crown/phase2-work/phase2b-output \
   --raw-export-commit 516e2eb694cb73c9b14fcbff2eaf02d8a47329a3
+
+# 6) Phase 2C economic-balance classification (post-processing only)
+contrib/devtools/revival/phase2/phase2c-classify-economic-balances.sh \
+  --balances-jsonl /mnt/c/crown/phase2-work/phase2b-output/phase2b-address-script-balances.jsonl \
+  --distribution-json /mnt/c/crown/phase2-work/phase2b-output/phase2b-distribution-summary.json \
+  --metadata-json /mnt/c/crown/phase2-work/phase2b-output/phase2b-snapshot-metadata.json \
+  --audit-json /mnt/c/crown/phase2-work/phase2b-output/phase2b-reconstruction-audit.json \
+  --attribution-json /home/runner/work/crown-core/crown-core/contrib/devtools/revival/phase2/phase2c-attribution-overrides.example.json \
+  --outdir /mnt/c/crown/phase2-work/phase2c-output
 ```
 
 ## Expected output files
@@ -173,6 +189,16 @@ Phase 2B output directory:
 - `phase2b-address-script-balances.jsonl`
 - `phase2b-distribution-summary.json`
 - supporting captures (`blockchaininfo-after-reconstruction.json`, `txoutsetinfo-after-reconstruction.json`, `snapshot-block.json`, `chaintips-after-reconstruction.json`, `exportutxosnapshot-result.json`)
+
+Phase 2C output directory:
+- `phase2c-classification-registry.json`
+- `phase2c-collateral-concentration.json`
+- `phase2c-top-balances-report.json`
+- `phase2c-node-collateral-analysis.json`
+- `phase2c-exchange-custody-analysis.json`
+- `phase2c-wrapped-crown-analysis.json`
+- `phase2c-control-entities.json`
+- `phase2c-summary.json`
 
 Phase 2B provenance fields include:
 - snapshot height/hash/timestamp/chainwork
