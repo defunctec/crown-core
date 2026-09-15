@@ -708,3 +708,597 @@ PoC objective:
    - Yes, now **provisional architecture recommendation**.
 15. **Exact next PoC?**
    - Defined in section 23.
+
+---
+
+## 26) RESEARCH PHASE CONCLUSION
+
+### PROVISIONAL ARCHITECTURE RECOMMENDATION
+
+- **Bitcoin base:** Bitcoin Core v31.1
+- **Repository:** https://github.com/bitcoin/bitcoin
+- **Tag:** `v31.1`
+- **Commit:** `9be056a8a72b624dae9623b2f7bded92c2a21c91`
+- **Consensus direction:** Native Crown C++ implementation of Tendermint-style bonded BFT consensus/finality integrated directly into the Bitcoin Core-derived node.
+
+Explicit boundary statements:
+
+- Crown is **not** proposing to use standalone CometBFT.
+- Crown is **not** proposing to retain legacy Crown consensus code.
+- Crown is **not** attempting to convert the old Crown repository into the successor architecture.
+- The old Crown repository remains historical/audit evidence only.
+
+---
+
+## 27) Bitcoin-upstream principle (wrap-up)
+
+Central engineering principle:
+
+> Crown should remain as close to modern Bitcoin Core as practical.
+
+Crown-specific code should be:
+
+- narrow
+- modular
+- isolated
+- justified
+
+Preferred implementation strategy:
+
+- add new Crown modules beside Bitcoin Core
+- avoid invasive rewrites of Bitcoin subsystems whenever technically possible
+
+Bitcoin-derived areas intended to remain largely upstream-trackable:
+
+- UTXO model
+- transaction format
+- Script / Witness / Taproot
+- mempool and transaction relay
+- wallet / descriptors / PSBT
+- chainstate
+- block storage / pruning
+- P2P transport and peer management
+- RPC infrastructure
+- testing / fuzzing
+
+Major replacement area: PoW-specific consensus path.
+
+---
+
+## 28) Consensus components to replace/adapt
+
+Crown expects to replace or substantially adapt Bitcoin’s:
+
+- SHA256d Proof-of-Work block production
+- mining
+- difficulty adjustment
+- accumulated-chainwork fork choice
+- PoW-specific block/header semantics where necessary
+- mining-based activation/signalling assumptions
+
+Clarification:
+
+- SHA-256 itself is **not** being removed.
+- SHA-256 remains useful for hashing, block/tx IDs, commitments, Merkle structures, and artifact integrity.
+- Only SHA256d Proof-of-Work as the consensus mechanism is being removed.
+
+---
+
+## 29) Crown node-role model (agreed direction)
+
+### Validators
+
+Consensus-critical role:
+
+- proposal
+- voting
+- finality
+- validator-set participation
+- bonded economic security
+
+### Service nodes
+
+Rewarded non-consensus infrastructure:
+
+- authenticated state snapshots
+- historical data
+- indexes
+- compact-filter data
+- project artifacts
+- other useful verifiable network data
+
+Invariant:
+
+> SERVICE NODES ARE DATA PROVIDERS, NOT AUTHORITIES.
+
+### Archive nodes
+
+- retain full historical data
+- may be a distinct role or a service-node capability in later design
+
+### Independent full / pruned nodes
+
+First-class Crown participants:
+
+- no validator bond required
+- no service-node role required
+- no mandatory protocol reward required
+- independently verify Crown consensus and transactions
+
+This remains a core architectural invariant.
+
+---
+
+## 30) Bootstrap reality
+
+Realistic early launch may begin with ~1 independent operator running approximately:
+
+- 4 validator instances
+- several archive-capable nodes
+- at least one service node
+
+Potentially across separate infrastructure providers.
+
+Important distinction:
+
+- validator instance count != independent operator/control-domain count
+
+Multiple validator processes under one owner provide operational redundancy, **not decentralisation**.
+
+The same consensus family must allow additional independent validator operators to join later without consensus-family change.
+
+---
+
+## 31) Preferred finality structure
+
+For block at height `N`:
+
+1. block `N` is proposed and validated
+2. validators perform Tendermint-style voting
+3. `>2/3` voting power finalises block `N`
+4. compact finality certificate is produced
+5. block `N+1` commits to the finality certificate for block `N`
+
+This avoids including signatures inside the hash of the block being signed.
+
+Normal full nodes must independently verify finality certificates.
+
+Exact certificate encoding remains a PoC-level design question.
+
+---
+
+## 32) One versioned CrownStateRoot per block
+
+Agreed direction:
+
+> Every Crown block should commit to one versioned `CrownStateRoot`.
+
+Conceptual `CrownStateRoot v1` composition:
+
+- UTXO-state commitment
+- validator-state commitment
+- consensus-state commitment
+
+Future consensus-state extensions should use versioned root definitions, not ad hoc multiple unrelated block roots.
+
+Exact authenticated-state structure remains open.
+
+PoC must determine efficient incremental UTXO-commitment maintenance.
+
+---
+
+## 33) Block hash as checkpoint identifier
+
+Simplification:
+
+- Crown does not require service nodes to invent a separate checkpoint chain/hash.
+- The ordinary Crown block hash is the checkpoint identifier.
+
+Conceptual chain:
+
+`CrownStateRoot -> consensus commitment in block -> tx/block commitment -> Crown block hash -> checkpoint identifier`
+
+Commitment placement remains provisional.
+
+---
+
+## 34) CrownStateRoot commitment location (open)
+
+Not yet locked:
+
+- direct placement in `CBlockHeader`
+- or commitment through a mandatory Bitcoin-style block-body/system-transaction commitment
+
+Decision criterion:
+
+- smallest permanent Bitcoin Core divergence
+- lowest future upstream merge burden
+- cleanest consensus implementation
+- least destructive change to Bitcoin structures
+
+Strong candidate:
+
+- Bitcoin-style mandatory unspendable commitment in Crown reward/system transaction, allowing Merkle root + block hash to authenticate `CrownStateRoot` without permanently expanding `CBlockHeader`.
+
+Status: **open; choose least invasive proven approach in PoC/code-level analysis.**
+
+---
+
+## 35) Snapshot model and cadence
+
+Crown does not need full state snapshots every block.
+
+Direction:
+
+- every block commits `CrownStateRoot`
+- periodic full state snapshots correspond to finalised Crown blocks
+
+Do not freeze a hard snapshot interval yet.
+
+Cadence should be chosen from:
+
+- block time
+- snapshot generation cost
+- storage/bandwidth
+- service-node burden
+- desired new-client catch-up time
+
+Snapshot cadence is primarily UX/performance, not core consensus security.
+
+---
+
+## 36) Snapshot content and format independence
+
+Future snapshots may need enough information to reconstruct:
+
+- UTXO state
+- validator state
+- bonded/unbonding state
+- required slashing/evidence state
+- epoch/consensus state
+- other consensus-critical state
+
+Key principle:
+
+- consensus commits to state
+- snapshot files are transport/serialization artifacts
+
+Snapshot formats may evolve (`v1`, `v2`, new chunking/compression) without consensus fork, provided they reconstruct identical authenticated state.
+
+---
+
+## 37) Crown AssumeUTXO direction
+
+Agreed UX direction (Bitcoin AssumeUTXO philosophy adapted):
+
+A node should be able to:
+
+1. authenticate a sufficiently recent Crown checkpoint
+2. obtain matching state snapshot
+3. verify snapshot against committed `CrownStateRoot`
+4. start operating from that state
+5. continue historical validation in background
+
+Fast startup and eventual independent verification are both required.
+
+Exact Crown AssumeUTXO adaptation remains implementation research.
+
+---
+
+## 38) Service-node distribution principle
+
+Service nodes:
+
+- distribute authenticated artifacts
+- do not define consensus truth
+
+Example:
+
+- expected root from finalised block: `ABC123`
+- snapshot reconstructs `ABC123` -> valid
+- malicious snapshot reconstructs `DEF456` -> reject
+
+No service-node majority vote is required for mathematical correctness.
+
+Authoritative source remains the Crown chain and its verifiable commitments.
+
+---
+
+## 39) Proof-of-useful-service direction
+
+Promising provisional reward model:
+
+Service rewards only when service node can automatically prove it is:
+
+- current
+- storing required artifacts
+- storing correct artifacts
+- available
+- able to serve data under required conditions
+
+Candidate mechanisms:
+
+- chunk challenges
+- Merkle proofs
+- response deadlines
+- randomized possession checks
+- observed serving performance
+- uptime constraints
+
+Target property:
+
+`correct + current + proves possession + serves required data = service reward eligibility`
+
+No recurring manual developer approval should be required.
+
+Exact mechanism remains future design research.
+
+---
+
+## 40) Authenticated developer/release injection
+
+Publication principle:
+
+- Crown may operate authenticated publication for approved project artifacts
+- signature means artifact was published/announced by Crown project
+- signature does **not** mean artifact is automatically consensus-correct
+
+Service nodes still run deterministic validation before accept/store/serve.
+
+Candidate artifacts:
+
+- release manifests
+- snapshot manifests
+- bootstrap metadata
+- governance documents
+- network artifacts
+
+Security direction:
+
+- prefer threshold/multi-key authority
+- support rotation/revocation
+- avoid one permanent developer signing key as single point of trust
+
+---
+
+## 41) New/stale node bootstrap rule
+
+Mandatory requirement:
+
+> If a node’s last known finalised checkpoint is older than Crown’s safe bootstrap period, it must obtain a recent authenticated checkpoint before selecting between competing histories.
+
+Purpose:
+
+- mitigate long-range selection risk for very stale/new nodes.
+
+Safe-bootstrap period remains open; depends on:
+
+- unbonding lifecycle
+- slashing/economic-accountability horizon
+- validator-key assumptions
+- checkpoint authentication design
+
+This must eventually be enforced automatically by client behavior.
+
+---
+
+## 42) Release checkpoints
+
+Crown-native direction:
+
+Releases should periodically include a recent known-finalised checkpoint:
+
+```text
+TrustedBootstrapCheckpoint {
+  height
+  Crown block hash
+}
+```
+
+Optionally, clients may trust an authenticated checkpoint-publication key set to fetch newer checkpoint metadata without upgrading binary.
+
+Checkpoint authority should only attest:
+
+- “this block was already finalised Crown history when published.”
+
+Checkpoint authority must not be able to:
+
+- create coins
+- rewrite balances
+- choose future blocks
+- select validators arbitrarily
+- reverse valid transactions
+
+Prefer threshold signatures / separated keys.
+
+---
+
+## 43) Long-range security position
+
+Current conclusion:
+
+- hashes and state commitments solve integrity/consistency/snapshot correctness
+- hashes alone do not choose between competing internally valid long-range branches
+
+Therefore:
+
+- active/recent nodes follow locally known finalised state
+- new/excessively stale nodes require recent authenticated finality checkpoint
+- subsequent history is independently validated
+
+No external Bitcoin anchoring is currently proposed.
+
+---
+
+## 44) NEXT PHASE: SUCCESSOR CONSENSUS PROOF OF CONCEPT
+
+Implementation will occur in a **new PR** (not this research PR).
+
+Suggested branch:
+
+- `spike/successor-consensus-poc`
+
+PoC 1 should be intentionally minimal:
+
+- Bitcoin Core v31.1 baseline
+- 4 static validators
+- equal initial voting power
+- 1 non-validator independently validating full node
+
+PoC 1 should not initially include:
+
+- dynamic validator bonding
+- production tokenomics
+- service-node rewards
+- archive rewards
+- governance
+- legacy migration
+- native assets
+- polished wallet UX
+
+---
+
+## 45) First PoC success conditions
+
+PoC 1 should demonstrate:
+
+- normal Bitcoin-style UTXO transactions
+- Bitcoin-derived transaction/script validation
+- block proposals
+- Tendermint-style prevote/precommit
+- deterministic `>2/3` finality
+- compact finality certificate
+- block `N+1` commitment to certificate for `N`
+- non-validator full-node verification
+- validator restart/recovery
+- full-node restart/resynchronization
+- 4/4 validator operation
+- 3/4 validator operation
+- safe halt at insufficient quorum
+- 3/1 partition behavior
+- 2/2 partition behavior
+- invalid proposal rejection
+- conflicting/equivocating vote detection
+
+---
+
+## 46) Critical PoC architecture gate
+
+Most important post-PoC review question:
+
+> Did implementation keep Bitcoin Core divergence within an acceptable boundary?
+
+After PoC 1, compare actual changes vs research estimate:
+
+- permanently modified Bitcoin files
+- new isolated Crown files
+- validation changes
+- net_processing changes
+- chain/index logic changes
+- wallet impact
+- mempool impact
+- script impact
+- P2P impact
+
+Decision rule:
+
+- if Tendermint integration is significantly more invasive than predicted, stop and reconsider architecture before adding more features
+- if wallet/script/mempool/UTXO remain largely upstream and consensus is reasonably isolated, architecture passes first practical gate
+
+---
+
+## 47) Later PoC phases (future, provisional)
+
+### PoC 2
+
+- `CrownStateRoot`
+- authenticated incremental UTXO commitment
+- validator-state commitment
+- UTXO-backed validator bonds
+- validator activation/exit/unbonding
+
+### PoC 3
+
+- periodic state snapshots
+- Crown AssumeUTXO adaptation
+- background historical validation
+- new/stale-node checkpoint bootstrap
+
+### PoC 4
+
+- service-node snapshot distribution
+- automated possession/availability challenges
+- proof-of-useful-service
+- service reward eligibility
+
+Sequence is provisional and may change from PoC findings.
+
+---
+
+## 48) Final status table
+
+| Item | Status |
+|---|---|
+| Bitcoin Core v31.1 base | PROVISIONAL AGREED DIRECTION |
+| Native Tendermint-style BFT | PROVISIONAL ARCHITECTURE RECOMMENDATION |
+| Standalone CometBFT | REJECTED |
+| Legacy Crown code as successor base | REJECTED |
+| Independent non-validator full nodes | ARCHITECTURAL REQUIREMENT |
+| Service nodes as consensus authorities | REJECTED |
+| Service nodes as verifiable data providers | PROVISIONAL AGREED DIRECTION |
+| One versioned CrownStateRoot per block | PROVISIONAL AGREED DIRECTION |
+| Crown block hash as checkpoint identifier | PROVISIONAL AGREED DIRECTION |
+| Block N+1 commits finality certificate for N | PROVISIONAL AGREED DIRECTION |
+| Full snapshot every block | REJECTED |
+| Periodic authenticated state snapshots | PROVISIONAL AGREED DIRECTION |
+| AssumeUTXO-style fast bootstrap + background validation | PROVISIONAL AGREED DIRECTION |
+| Recent authenticated checkpoint required for stale/new nodes | ARCHITECTURAL REQUIREMENT |
+| Proof-of-useful-service rewards | PROMISING / REQUIRES DESIGN & ADVERSARIAL TESTING |
+| Exact CrownStateRoot commitment location | OPEN — CHOOSE LEAST INVASIVE BITCOIN INTEGRATION |
+| Exact UTXO authenticated-state structure | OPEN — REQUIRES ENGINEERING RESEARCH/POC |
+| Exact snapshot interval | OPEN — PERFORMANCE/UX PARAMETER |
+| Exact safe-bootstrap/trusting period | OPEN — DEPENDS ON VALIDATOR LIFECYCLE |
+
+---
+
+## 49) PR wrap-up summary (for PR body hand-off)
+
+### WHAT THIS PR ESTABLISHED
+
+- Closed the architecture research stage with a documented provisional architecture recommendation.
+- Pinned successor baseline to Bitcoin Core v31.1 (`9be056a8a72b624dae9623b2f7bded92c2a21c91`).
+- Established native Tendermint-style integration direction inside Bitcoin-derived node architecture.
+- Established non-validator independent full-node verification as mandatory.
+- Established CrownStateRoot/checkpoint/snapshot/AssumeUTXO and service-node authority boundaries.
+- Defined staged PoC path and practical architecture gate criteria.
+
+### WHAT REMAINS PROVISIONAL
+
+- exact finality certificate encoding
+- exact CrownStateRoot commitment location
+- exact authenticated-state internal structure
+- exact snapshot cadence
+- exact safe-bootstrap/trusting period
+- final service reward challenge mechanics
+
+### WHAT WAS EXPLICITLY REJECTED
+
+- standalone CometBFT as successor runtime architecture
+- legacy Crown codebase as successor implementation base
+- service nodes as consensus authorities
+- full-state snapshot every block
+
+### WHY IMPLEMENTATION IS NOT INCLUDED
+
+This PR is intentionally research/documentation-only and preserves a clean architecture decision hand-off. Implementation and falsification of assumptions belongs in a dedicated PoC PR.
+
+### NEXT PR: SUCCESSOR CONSENSUS POC
+
+The next PR should attempt to falsify this provisional architecture by implementing the smallest viable Crown consensus network and measuring real Bitcoin Core divergence against this research estimate.
+
+Final wrap-up statement:
+
+- This PR closes the architecture-research stage.
+- It does **not** claim production consensus readiness.
+- Recommendation remains provisional until PoC validation.
+
