@@ -147,7 +147,7 @@ Assume bootstrap set size = 4 validators, BFT threshold = 3/4 voting power.
 **Safety/liveness assumptions**
 
 - Safety requires <1/3 Byzantine voting power.
-- Liveness requires >=2/3 voting power online and sufficiently synchronous periods.
+- Liveness requires **strictly more than 2/3** voting power online during sufficiently synchronous periods (with 4 equal validators: **3 of 4 online**).
 - At 4 validators (equal weight), 3 signatures are required for finality.
 
 **Expected permanent Crown-specific modules**
@@ -254,4 +254,3 @@ Exclude from first PoC:
 6. **Can unpaid full/pruned nodes stay first-class independent validators?** Yes.
 7. **Can service/archive roles stay useful/rewarded without authority?** Yes, via cryptographically verifiable distribution.
 8. **Minimal PoC:** 4 validators + 1 independent full node on Bitcoin-derived execution with Tendermint-style finality adapter.
-
