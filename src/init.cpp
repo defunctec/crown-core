@@ -1457,8 +1457,7 @@ bool AppInitMain(NodeContext& node, interfaces::BlockAndHeaderTipInfo* tip_info)
         }
         node.crown = std::make_unique<crown::RuntimeOptions>(*crown_options);
         if (node.crown->validator) {
-            LogInfo("Crown validator %s initialized with voting power %d (quorum %d/%d)",
-                    node.crown->local_validator->id,
+            LogInfo("Crown validator initialized with voting power %d (quorum %d/%d)",
                     node.crown->local_validator->voting_power,
                     node.crown->quorum_voting_power,
                     node.crown->total_voting_power);
