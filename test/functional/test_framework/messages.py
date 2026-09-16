@@ -92,6 +92,7 @@ MAGIC_BYTES = {
     "testnet4": b"\x1c\x16\x3f\x28",
     "regtest": b"\xfa\xbf\xb5\xda",
     "signet": b"\x0a\x03\xcf\x40",
+    "crown": b"\xce\xf1\xdb\xfa",
 }
 
 def sha256(s):

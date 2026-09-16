@@ -720,6 +720,24 @@ BOOST_AUTO_TEST_CASE(util_GetChainTypeString)
     BOOST_CHECK_THROW(test_args.GetChainTypeString(), std::runtime_error);
 }
 
+BOOST_AUTO_TEST_CASE(util_GetChainTypeString_crown)
+{
+    TestArgsManager test_args;
+    const auto crown = std::make_pair("-crown", ArgsManager::ALLOW_ANY);
+    const auto regtest = std::make_pair("-regtest", ArgsManager::ALLOW_ANY);
+    test_args.SetupArgs({crown, regtest});
+
+    const char* argv_crown[] = {"cmd", "-crown"};
+    const char* argv_both[] = {"cmd", "-crown", "-regtest"};
+    std::string error;
+
+    BOOST_CHECK(test_args.ParseParameters(2, argv_crown, error));
+    BOOST_CHECK_EQUAL(test_args.GetChainTypeString(), "crown");
+
+    BOOST_CHECK(test_args.ParseParameters(3, argv_both, error));
+    BOOST_CHECK_THROW(test_args.GetChainTypeString(), std::runtime_error);
+}
+
 // Test different ways settings can be merged, and verify results. This test can
 // be used to confirm that updates to settings code don't change behavior
 // unintentionally.

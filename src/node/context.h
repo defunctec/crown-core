@@ -35,6 +35,9 @@ class WalletLoader;
 namespace kernel {
 struct Context;
 }
+namespace crown {
+struct RuntimeOptions;
+}
 namespace util {
 class SignalInterrupt;
 }
@@ -89,6 +92,7 @@ struct NodeContext {
     std::atomic<int> exit_status{EXIT_SUCCESS};
     //! Manages all the node warnings
     std::unique_ptr<node::Warnings> warnings;
+    std::unique_ptr<crown::RuntimeOptions> crown;
     std::thread background_init_thread;
 
     //! Declare default constructor and destructor that are not inline, so code
