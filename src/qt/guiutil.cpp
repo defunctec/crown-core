@@ -122,7 +122,7 @@ static std::string DummyAddress(const CChainParams &params)
         addr = "bcrt1p35yvjel7srp783ztf8v6jdra7dhfzk5jaun8xz2qp6ws7z80n4tqsr2427";
         break;
     case ChainType::CROWN:
-        addr = "crt1p35yvjel7srp783ztf8v6jdra7dhfzk5jaun8xz2qp6ws7z80n4tqv7k2v4";
+        addr = "ccrt1p35yvjel7srp783ztf8v6jdra7dhfzk5jaun8xz2qp6ws7z80n4tqv7k2v4";
         break;
     } // no default case, so the compiler can warn about missing cases
     assert(!addr.empty());

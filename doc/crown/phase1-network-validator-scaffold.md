@@ -26,7 +26,7 @@ The experimental chain uses:
 - message magic: `ce f1 db fa`
 - P2P port: `28444`
 - RPC port: `28443`
-- Bech32 HRP: `crt`
+- Bech32 HRP: `ccrt`
 
 Its consensus parameters intentionally stay regtest-like for PoC work:
 
