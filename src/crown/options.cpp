@@ -127,7 +127,6 @@ util::Result<RuntimeOptions> InitializeRuntimeOptions(const ArgsManager& args, c
     options.validator = true;
     options.local_validator = LocalValidator{
         .id = validator_id,
-        .private_key = *private_key,
         .consensus_public_key = derived_pubkey,
         .voting_power = validator->voting_power,
     };

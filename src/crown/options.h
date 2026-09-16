@@ -5,7 +5,6 @@
 #ifndef BITCOIN_CROWN_OPTIONS_H
 #define BITCOIN_CROWN_OPTIONS_H
 
-#include <key.h>
 #include <pubkey.h>
 #include <util/result.h>
 
@@ -23,7 +22,6 @@ inline constexpr bool DEFAULT_CROWN_VALIDATOR{false};
 
 struct LocalValidator {
     std::string id;
-    CKey private_key;
     CPubKey consensus_public_key;
     int64_t voting_power;
 };
