@@ -107,6 +107,8 @@ add_library(bitcoin_common STATIC EXCLUDE_FROM_ALL
   common/url.cpp
   compressor.cpp
   core_io.cpp
+  crown/consensus/engine.cpp
+  crown/consensus/types.cpp
   crown/options.cpp
   crown/validator.cpp
   deploymentinfo.cpp

@@ -36,6 +36,7 @@ add_executable(test_bitcoin
   coinsviewoverlay_tests.cpp
   common_url_tests.cpp
   compress_tests.cpp
+  crown_consensus_tests.cpp
   crown_tests.cpp
   crypto_tests.cpp
   cuckoocache_tests.cpp
