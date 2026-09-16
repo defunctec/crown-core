@@ -581,6 +581,106 @@ BOOST_AUTO_TEST_CASE(crown_consensus_valid_round_allows_safe_lock_transition)
     BOOST_CHECK(votes.front().block_id == y);
 }
 
+BOOST_AUTO_TEST_CASE(crown_consensus_rejects_forged_valid_round_for_different_block)
+{
+    ConsensusEngine engine = MakeEngine("validator-a");
+    const BlockID x = TestBlock("forged-vr-lock-x");
+    const BlockID y = TestBlock("forged-vr-proposal-y");
+    const BlockID z = TestBlock("forged-vr-proof-z");
+
+    engine.StartHeight(TEST_HEIGHT);
+    engine.ReceiveProposal(MakeSignedProposal("validator-a", TEST_HEIGHT, 0, x), true);
+    engine.ReceiveVote(MakeSignedVote("validator-b", VoteType::PREVOTE, TEST_HEIGHT, 0, x));
+    engine.ReceiveVote(MakeSignedVote("validator-c", VoteType::PREVOTE, TEST_HEIGHT, 0, x));
+    BOOST_CHECK(engine.GetState().locked_block == x);
+    BOOST_CHECK_EQUAL(engine.GetState().locked_round, 0);
+
+    engine.OnTimeout(TimeoutKind::PRECOMMIT);
+    BOOST_CHECK_EQUAL(engine.GetState().round, 1);
+
+    BOOST_CHECK(engine.ReceiveVote(MakeSignedVote("validator-b", VoteType::PREVOTE, TEST_HEIGHT, 1, z)).empty());
+    BOOST_CHECK(engine.ReceiveVote(MakeSignedVote("validator-c", VoteType::PREVOTE, TEST_HEIGHT, 1, z)).empty());
+    BOOST_CHECK(engine.ReceiveVote(MakeSignedVote("validator-d", VoteType::PREVOTE, TEST_HEIGHT, 1, z)).empty());
+    BOOST_CHECK(engine.HasSeenPrevoteProof(1, z));
+    BOOST_CHECK(!engine.HasSeenPrevoteProof(1, y));
+
+    engine.OnTimeout(TimeoutKind::PROPOSE);
+    engine.OnTimeout(TimeoutKind::PREVOTE);
+    engine.OnTimeout(TimeoutKind::PRECOMMIT);
+    BOOST_CHECK_EQUAL(engine.GetState().round, 2);
+
+    const auto actions = engine.ReceiveProposal(MakeSignedProposal("validator-c", TEST_HEIGHT, 2, y, 1), true);
+    const auto votes = VoteActions(actions);
+    BOOST_REQUIRE_EQUAL(votes.size(), 1U);
+    BOOST_CHECK(votes.front().type == VoteType::PREVOTE);
+    BOOST_CHECK(!votes.front().block_id.has_value());
+    BOOST_CHECK(engine.GetState().locked_block == x);
+    BOOST_CHECK_EQUAL(engine.GetState().locked_round, 0);
+}
+
+BOOST_AUTO_TEST_CASE(crown_consensus_rejects_valid_round_below_locked_round)
+{
+    ConsensusEngine engine = MakeEngine("validator-a");
+    const BlockID x = TestBlock("locked-round-x");
+    const BlockID y = TestBlock("locked-round-y");
+
+    engine.StartHeight(TEST_HEIGHT);
+    BOOST_CHECK(engine.ReceiveVote(MakeSignedVote("validator-b", VoteType::PREVOTE, TEST_HEIGHT, 0, y)).empty());
+    BOOST_CHECK(engine.ReceiveVote(MakeSignedVote("validator-c", VoteType::PREVOTE, TEST_HEIGHT, 0, y)).empty());
+    BOOST_CHECK(engine.ReceiveVote(MakeSignedVote("validator-d", VoteType::PREVOTE, TEST_HEIGHT, 0, y)).empty());
+    BOOST_CHECK(engine.HasSeenPrevoteProof(0, y));
+
+    engine.OnTimeout(TimeoutKind::PROPOSE);
+    engine.OnTimeout(TimeoutKind::PREVOTE);
+    engine.OnTimeout(TimeoutKind::PRECOMMIT);
+    BOOST_CHECK_EQUAL(engine.GetState().round, 1);
+
+    engine.ReceiveProposal(MakeSignedProposal("validator-b", TEST_HEIGHT, 1, x), true);
+    engine.ReceiveVote(MakeSignedVote("validator-b", VoteType::PREVOTE, TEST_HEIGHT, 1, x));
+    engine.ReceiveVote(MakeSignedVote("validator-c", VoteType::PREVOTE, TEST_HEIGHT, 1, x));
+    BOOST_CHECK(engine.GetState().locked_block == x);
+    BOOST_CHECK_EQUAL(engine.GetState().locked_round, 1);
+
+    engine.OnTimeout(TimeoutKind::PRECOMMIT);
+    BOOST_CHECK_EQUAL(engine.GetState().round, 2);
+
+    const auto actions = engine.ReceiveProposal(MakeSignedProposal("validator-c", TEST_HEIGHT, 2, y, 0), true);
+    const auto votes = VoteActions(actions);
+    BOOST_REQUIRE_EQUAL(votes.size(), 1U);
+    BOOST_CHECK(votes.front().type == VoteType::PREVOTE);
+    BOOST_CHECK(!votes.front().block_id.has_value());
+    BOOST_CHECK(engine.GetState().locked_block == x);
+    BOOST_CHECK_EQUAL(engine.GetState().locked_round, 1);
+}
+
+BOOST_AUTO_TEST_CASE(crown_consensus_late_prevote_quorum_after_precommit_nil_does_not_double_sign)
+{
+    ConsensusEngine engine = MakeEngine("validator-a");
+    const BlockID x = TestBlock("late-prevote-quorum");
+
+    engine.StartHeight(TEST_HEIGHT);
+    const auto nil_prevote_actions = engine.OnTimeout(TimeoutKind::PROPOSE);
+    const auto nil_prevotes = VoteActions(nil_prevote_actions);
+    BOOST_REQUIRE_EQUAL(nil_prevotes.size(), 1U);
+    BOOST_CHECK(!nil_prevotes.front().block_id.has_value());
+
+    BOOST_CHECK(engine.ReceiveVote(MakeSignedVote("validator-b", VoteType::PREVOTE, TEST_HEIGHT, 0, std::nullopt)).empty());
+    const auto nil_precommit_actions = engine.ReceiveVote(MakeSignedVote("validator-c", VoteType::PREVOTE, TEST_HEIGHT, 0, std::nullopt));
+    const auto nil_precommits = VoteActions(nil_precommit_actions);
+    BOOST_REQUIRE_EQUAL(nil_precommits.size(), 1U);
+    BOOST_CHECK(nil_precommits.front().type == VoteType::PRECOMMIT);
+    BOOST_CHECK(!nil_precommits.front().block_id.has_value());
+    BOOST_CHECK(engine.GetState().step == Step::PRECOMMIT);
+
+    BOOST_CHECK(engine.ReceiveProposal(MakeSignedProposal("validator-a", TEST_HEIGHT, 0, x), true).empty());
+    BOOST_CHECK(engine.ReceiveVote(MakeSignedVote("validator-b", VoteType::PREVOTE, TEST_HEIGHT, 0, x)).empty());
+    BOOST_CHECK(engine.ReceiveVote(MakeSignedVote("validator-c", VoteType::PREVOTE, TEST_HEIGHT, 0, x)).empty());
+    const auto late_quorum_actions = engine.ReceiveVote(MakeSignedVote("validator-d", VoteType::PREVOTE, TEST_HEIGHT, 0, x));
+    BOOST_CHECK(VoteActions(late_quorum_actions).empty());
+    BOOST_CHECK(!engine.GetState().locked_block.has_value());
+    BOOST_CHECK(engine.GetState().step == Step::PRECOMMIT);
+}
+
 BOOST_AUTO_TEST_CASE(crown_consensus_partition_behavior)
 {
     const BlockID x = TestBlock("partition-3-1");
