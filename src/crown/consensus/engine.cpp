@@ -227,6 +227,42 @@ std::vector<Vote> ConsensusEngine::CollectSupportingVotes(const std::map<std::st
     return supporting_votes;
 }
 
+void ConsensusEngine::UpdateValidBlock(const int round, const QuorumResult& prevote_quorum)
+{
+    if (!prevote_quorum.has_quorum || !prevote_quorum.block_id.has_value()) return;
+    if (round < m_state.valid_round) return;
+
+    m_state.valid_block = prevote_quorum.block_id;
+    m_state.valid_round = round;
+}
+
+void ConsensusEngine::TryCommitRound(const int round, const RoundVotes& round_votes, std::vector<Action>& actions)
+{
+    if (m_state.commit.has_value()) return;
+
+    const auto precommit_quorum = FindQuorum(round_votes.precommits);
+    if (!precommit_quorum.has_quorum || !precommit_quorum.block_id.has_value()) return;
+
+    m_state.step = Step::COMMIT;
+    m_state.commit = CommitDecision{
+        .height = m_state.height,
+        .round = round,
+        .block_id = *precommit_quorum.block_id,
+        .supporting_votes = CollectSupportingVotes(round_votes.precommits, precommit_quorum.block_id),
+    };
+    actions.push_back(Action::CommitAction(*m_state.commit));
+}
+
+void ConsensusEngine::ObserveKnownRoundQuorums(std::vector<Action>& actions)
+{
+    for (const auto& [round, round_votes] : m_round_votes) {
+        if (round > m_state.round) continue;
+        UpdateValidBlock(round, FindQuorum(round_votes.prevotes));
+        TryCommitRound(round, round_votes, actions);
+        if (m_state.commit.has_value()) return;
+    }
+}
+
 util::Result<Vote> ConsensusEngine::BuildLocalVote(const VoteType type, const std::optional<BlockID> block_id)
 {
     if (!IsLocalValidator()) {
@@ -279,8 +315,7 @@ std::vector<Action> ConsensusEngine::TryAdvance()
     const auto prevote_quorum = FindQuorum(current_round_votes->prevotes);
     if (prevote_quorum.has_quorum) {
         if (prevote_quorum.block_id.has_value() && IsCurrentProposalUsable() && m_state.current_proposal->block_id == prevote_quorum.block_id) {
-            m_state.valid_block = prevote_quorum.block_id;
-            m_state.valid_round = m_state.round;
+            UpdateValidBlock(m_state.round, prevote_quorum);
             if (IsLocalValidator() && m_state.step != Step::COMMIT) {
                 if (auto vote = BuildLocalVote(VoteType::PRECOMMIT, prevote_quorum.block_id); vote) {
                     RegisterVote(*vote, actions);
@@ -299,17 +334,7 @@ std::vector<Action> ConsensusEngine::TryAdvance()
         }
     }
 
-    const auto precommit_quorum = FindQuorum(current_round_votes->precommits);
-    if (precommit_quorum.has_quorum && precommit_quorum.block_id.has_value() && !m_state.commit.has_value()) {
-        m_state.step = Step::COMMIT;
-        m_state.commit = CommitDecision{
-            .height = m_state.height,
-            .round = m_state.round,
-            .block_id = *precommit_quorum.block_id,
-            .supporting_votes = CollectSupportingVotes(current_round_votes->precommits, precommit_quorum.block_id),
-        };
-        actions.push_back(Action::CommitAction(*m_state.commit));
-    }
+    ObserveKnownRoundQuorums(actions);
 
     return actions;
 }
@@ -345,10 +370,9 @@ std::vector<Action> ConsensusEngine::ReceiveVote(const Vote& vote)
     if (vote.height != m_state.height) return actions;
 
     RegisterVote(vote, actions);
-    if (vote.round == m_state.round) {
-        auto next_actions = TryAdvance();
-        actions.insert(actions.end(), next_actions.begin(), next_actions.end());
-    }
+    auto next_actions = vote.round == m_state.round ? TryAdvance() : std::vector<Action>{};
+    if (vote.round != m_state.round) ObserveKnownRoundQuorums(actions);
+    actions.insert(actions.end(), next_actions.begin(), next_actions.end());
     return actions;
 }
 

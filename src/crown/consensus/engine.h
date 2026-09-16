@@ -110,6 +110,9 @@ private:
     bool ProposalAllowsPrevote(const Proposal& proposal) const;
     bool RegisterVote(const Vote& vote, std::vector<Action>& actions);
     QuorumResult FindQuorum(const std::map<std::string, Vote>& votes) const;
+    void UpdateValidBlock(int round, const QuorumResult& prevote_quorum);
+    void TryCommitRound(int round, const RoundVotes& round_votes, std::vector<Action>& actions);
+    void ObserveKnownRoundQuorums(std::vector<Action>& actions);
     std::vector<Vote> CollectSupportingVotes(const std::map<std::string, Vote>& votes, const std::optional<BlockID>& block_id) const;
     util::Result<Vote> BuildLocalVote(VoteType type, std::optional<BlockID> block_id);
     std::vector<Action> TryAdvance();

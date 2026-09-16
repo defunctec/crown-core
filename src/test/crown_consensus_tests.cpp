@@ -673,12 +673,48 @@ BOOST_AUTO_TEST_CASE(crown_consensus_late_prevote_quorum_after_precommit_nil_doe
     BOOST_CHECK(engine.GetState().step == Step::PRECOMMIT);
 
     BOOST_CHECK(engine.ReceiveProposal(MakeSignedProposal("validator-a", TEST_HEIGHT, 0, x), true).empty());
-    BOOST_CHECK(engine.ReceiveVote(MakeSignedVote("validator-b", VoteType::PREVOTE, TEST_HEIGHT, 0, x)).empty());
-    BOOST_CHECK(engine.ReceiveVote(MakeSignedVote("validator-c", VoteType::PREVOTE, TEST_HEIGHT, 0, x)).empty());
+    const auto conflicting_b = engine.ReceiveVote(MakeSignedVote("validator-b", VoteType::PREVOTE, TEST_HEIGHT, 0, x));
+    BOOST_CHECK(VoteActions(conflicting_b).empty());
+    BOOST_REQUIRE_EQUAL(EvidenceActions(conflicting_b).size(), 1U);
+    const auto conflicting_c = engine.ReceiveVote(MakeSignedVote("validator-c", VoteType::PREVOTE, TEST_HEIGHT, 0, x));
+    BOOST_CHECK(VoteActions(conflicting_c).empty());
+    BOOST_REQUIRE_EQUAL(EvidenceActions(conflicting_c).size(), 1U);
     const auto late_quorum_actions = engine.ReceiveVote(MakeSignedVote("validator-d", VoteType::PREVOTE, TEST_HEIGHT, 0, x));
     BOOST_CHECK(VoteActions(late_quorum_actions).empty());
     BOOST_CHECK(!engine.GetState().locked_block.has_value());
     BOOST_CHECK(engine.GetState().step == Step::PRECOMMIT);
+}
+
+BOOST_AUTO_TEST_CASE(crown_consensus_late_precommit_quorum_after_round_change_still_commits)
+{
+    ConsensusEngine engine = MakeEngine("validator-d");
+    const BlockID x = TestBlock("late-precommit-quorum");
+
+    engine.StartHeight(TEST_HEIGHT);
+    const auto on_proposal = engine.ReceiveProposal(MakeSignedProposal("validator-a", TEST_HEIGHT, 0, x), true);
+    const auto local_prevote = VoteActions(on_proposal);
+    BOOST_REQUIRE_EQUAL(local_prevote.size(), 1U);
+    BOOST_CHECK(local_prevote.front().type == VoteType::PREVOTE);
+    BOOST_CHECK(local_prevote.front().block_id == x);
+
+    BOOST_CHECK(engine.ReceiveVote(MakeSignedVote("validator-b", VoteType::PREVOTE, TEST_HEIGHT, 0, x)).empty());
+    const auto on_c_prevote = engine.ReceiveVote(MakeSignedVote("validator-c", VoteType::PREVOTE, TEST_HEIGHT, 0, x));
+    const auto local_precommit = VoteActions(on_c_prevote);
+    BOOST_REQUIRE_EQUAL(local_precommit.size(), 1U);
+    BOOST_CHECK(local_precommit.front().type == VoteType::PRECOMMIT);
+    BOOST_CHECK(local_precommit.front().block_id == x);
+
+    engine.OnTimeout(TimeoutKind::PRECOMMIT);
+    BOOST_CHECK_EQUAL(engine.GetState().round, 1);
+    AssertNotCommitted(engine);
+
+    BOOST_CHECK(engine.ReceiveVote(MakeSignedVote("validator-b", VoteType::PRECOMMIT, TEST_HEIGHT, 0, x)).empty());
+    const auto late_commit = engine.ReceiveVote(MakeSignedVote("validator-c", VoteType::PRECOMMIT, TEST_HEIGHT, 0, x));
+    const auto commits = CommitActions(late_commit);
+    BOOST_REQUIRE_EQUAL(commits.size(), 1U);
+    BOOST_CHECK_EQUAL(commits.front().round, 0);
+    BOOST_CHECK(commits.front().block_id == x);
+    AssertCommitted(engine, x, 0);
 }
 
 BOOST_AUTO_TEST_CASE(crown_consensus_partition_behavior)
@@ -715,6 +751,32 @@ BOOST_AUTO_TEST_CASE(crown_consensus_partition_behavior)
         AssertNotCommitted(sim.Node("validator-b"));
         AssertNotCommitted(sim.Node("validator-c"));
         AssertNotCommitted(sim.Node("validator-d"));
+    }
+
+    {
+        DeterministicSimulator sim;
+        sim.ClearLinks();
+        sim.ConnectClique({"validator-a", "validator-b", "validator-c"});
+        sim.SetRecipients("validator-d", {});
+
+        const Proposal proposal = sim.MakeProposal("validator-a", x);
+        sim.DeliverProposal(proposal, true, {"validator-a", "validator-b", "validator-c", "validator-d"});
+        sim.DeliverAllQueuedVotes();
+
+        sim.Timeout(TimeoutKind::PREVOTE, {"validator-d"});
+        sim.Timeout(TimeoutKind::PRECOMMIT, {"validator-d"});
+
+        AssertCommitted(sim.Node("validator-a"), x, 0);
+        AssertCommitted(sim.Node("validator-b"), x, 0);
+        AssertCommitted(sim.Node("validator-c"), x, 0);
+        AssertNotCommitted(sim.Node("validator-d"));
+        BOOST_CHECK_EQUAL(sim.Node("validator-d").GetState().round, 1);
+
+        sim.DeliverVote(MakeSignedVote("validator-a", VoteType::PRECOMMIT, TEST_HEIGHT, 0, x), {"validator-d"});
+        sim.DeliverVote(MakeSignedVote("validator-b", VoteType::PRECOMMIT, TEST_HEIGHT, 0, x), {"validator-d"});
+        sim.DeliverVote(MakeSignedVote("validator-c", VoteType::PRECOMMIT, TEST_HEIGHT, 0, x), {"validator-d"});
+
+        AssertCommitted(sim.Node("validator-d"), x, 0);
     }
 }
 
