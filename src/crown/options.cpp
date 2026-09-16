@@ -22,6 +22,14 @@ constexpr auto ARG_VALIDATOR{"-crownvalidator"};
 constexpr auto ARG_VALIDATOR_ID{"-crownvalidatorid"};
 constexpr auto ARG_VALIDATOR_PRIVKEY{"-crownvalidatorprivkey"};
 
+util::Result<void> ValidateValidatorFlagValue(const ArgsManager& args)
+{
+    if (!args.IsArgSet(ARG_VALIDATOR)) return {};
+    const std::string value{args.GetArg(ARG_VALIDATOR, "")};
+    if (value.empty() || value == "1" || value == "0") return {};
+    return util::Error{Untranslated("Crown validator mode only accepts -crownvalidator=1 or -crownvalidator=0.")};
+}
+
 bool HasValidatorConfig(const ArgsManager& args)
 {
     return args.GetBoolArg(ARG_VALIDATOR, DEFAULT_CROWN_VALIDATOR) ||
@@ -42,13 +50,15 @@ util::Result<void> ValidateValidatorKeyStructure(const ArgsManager& args)
 
 void SetupArgs(ArgsManager& argsman)
 {
-    argsman.AddArg(ARG_VALIDATOR, "Enable static validator mode on the experimental crown chain (default: 0). When disabled, the node runs as a non-validator full node.", ArgsManager::ALLOW_ANY | ArgsManager::NETWORK_ONLY, OptionsCategory::CHAINPARAMS);
+    argsman.AddArg(std::string{ARG_VALIDATOR} + "=<0|1>", "Enable static validator mode on the experimental crown chain (default: 0). When disabled, the node runs as a non-validator full node.", ArgsManager::ALLOW_ANY | ArgsManager::DISALLOW_ELISION | ArgsManager::DISALLOW_NEGATION | ArgsManager::NETWORK_ONLY, OptionsCategory::CHAINPARAMS);
     argsman.AddArg(std::string{ARG_VALIDATOR_ID} + "=<id>", "Static validator identifier for the experimental crown chain (validator-a, validator-b, validator-c, validator-d). Requires -crownvalidator=1.", ArgsManager::ALLOW_ANY | ArgsManager::DISALLOW_NEGATION | ArgsManager::NETWORK_ONLY, OptionsCategory::CHAINPARAMS);
     argsman.AddArg(std::string{ARG_VALIDATOR_PRIVKEY} + "=<hex>", "32-byte hex validator private key for the experimental crown chain. TEST ONLY, PUBLICLY KNOWN, NEVER USE FOR MAINNET. Requires -crownvalidator=1.", ArgsManager::ALLOW_ANY | ArgsManager::DISALLOW_NEGATION | ArgsManager::NETWORK_ONLY | ArgsManager::SENSITIVE, OptionsCategory::CHAINPARAMS);
 }
 
 util::Result<void> ValidateOptions(const ArgsManager& args, const ChainType chain)
 {
+    if (auto flag_check = ValidateValidatorFlagValue(args); !flag_check) return flag_check;
+
     if (chain != ChainType::CROWN) {
         if (HasValidatorConfig(args)) {
             return util::Error{Untranslated("Crown validator options are only supported on the experimental crown chain (-chain=crown or -crown).")};

@@ -105,6 +105,12 @@ BOOST_AUTO_TEST_CASE(crown_invalid_validator_options)
     BOOST_CHECK(!validation);
     BOOST_CHECK_NE(util::ErrorString(validation).original.find("requires both -crownvalidatorid and -crownvalidatorprivkey"), std::string::npos);
 
+    ArgsManager invalid_flag_args;
+    ParseArgs(invalid_flag_args, {"-crown", "-crownvalidator=foo"});
+    auto invalid_flag_validation = crown::ValidateOptions(invalid_flag_args, ChainType::CROWN);
+    BOOST_CHECK(!invalid_flag_validation);
+    BOOST_CHECK_NE(util::ErrorString(invalid_flag_validation).original.find("only accepts -crownvalidator=1 or -crownvalidator=0"), std::string::npos);
+
     ArgsManager wrong_chain_args;
     ParseArgs(wrong_chain_args, {
         "-crownvalidator=1",
