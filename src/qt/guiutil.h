@@ -25,9 +25,11 @@
 
 #include <cassert>
 #include <chrono>
+#include <string>
 #include <utility>
 
 class PlatformStyle;
+class CChainParams;
 class QValidatedLineEdit;
 class SendCoinsRecipient;
 
@@ -65,6 +67,9 @@ namespace GUIUtil
 
     // Return a monospace font
     QFont fixedPitchFont(bool use_embedded_font = false);
+
+    // Return a chain-specific dummy address string for UI validation placeholders.
+    std::string DummyAddress(const CChainParams& params);
 
     // Set up widget for address
     void setupAddressWidget(QValidatedLineEdit *widget, QWidget *parent);

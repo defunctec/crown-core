@@ -4,6 +4,9 @@
 
 #include <qt/test/uritests.h>
 
+#include <chainparams.h>
+#include <common/args.h>
+#include <key_io.h>
 #include <qt/guiutil.h>
 #include <qt/walletmodel.h>
 
@@ -89,4 +92,12 @@ void URITests::uriTests()
     QVERIFY(rv.address == QString("175tWpb8K1S7NmH4Zx6rewF9WQrcZv245W"));
     QVERIFY(rv.amount == 10000000000LL);
     QVERIFY(rv.label == QString("%3F"));
+}
+
+void URITests::dummyAddressTests()
+{
+    const auto crown_params = CreateChainParams(gArgs, ChainType::CROWN);
+    const auto dummy = GUIUtil::DummyAddress(*crown_params);
+    QVERIFY(QString::fromStdString(dummy).startsWith("ccrt1"));
+    QVERIFY(!IsValidDestinationString(dummy));
 }

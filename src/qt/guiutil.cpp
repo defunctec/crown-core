@@ -106,7 +106,7 @@ QFont fixedPitchFont(bool use_embedded_font)
 }
 
 // Return a pre-generated dummy bech32m address (P2TR) with invalid checksum.
-static std::string DummyAddress(const CChainParams &params)
+std::string GUIUtil::DummyAddress(const CChainParams &params)
 {
     std::string addr;
     switch (params.GetChainType()) {
@@ -120,6 +120,9 @@ static std::string DummyAddress(const CChainParams &params)
         break;
     case ChainType::REGTEST:
         addr = "bcrt1p35yvjel7srp783ztf8v6jdra7dhfzk5jaun8xz2qp6ws7z80n4tqsr2427";
+        break;
+    case ChainType::CROWN:
+        addr = "ccrt1pzyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zygsuvderl";
         break;
     } // no default case, so the compiler can warn about missing cases
     assert(!addr.empty());

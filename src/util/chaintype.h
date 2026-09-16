@@ -14,6 +14,7 @@ enum class ChainType {
     SIGNET,
     REGTEST,
     TESTNET4,
+    CROWN,
 };
 
 std::string ChainTypeToString(ChainType chain);
