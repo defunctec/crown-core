@@ -85,6 +85,7 @@ Proposal MakeSignedProposal(std::string_view proposer_id, int64_t height, int ro
         .proposer_id = std::string{proposer_id},
         .block_id = block_id,
         .valid_round = valid_round,
+        .signature = {},
     };
     auto signed_result = crown::consensus::SignProposal(proposal, GetSigner(proposer_id).private_key);
     BOOST_REQUIRE(signed_result);
@@ -99,6 +100,7 @@ Vote MakeSignedVote(std::string_view validator_id, VoteType type, int64_t height
         .round = round,
         .validator_id = std::string{validator_id},
         .block_id = block_id,
+        .signature = {},
     };
     auto signed_result = crown::consensus::SignVote(vote, GetSigner(validator_id).private_key);
     BOOST_REQUIRE(signed_result);
@@ -425,6 +427,7 @@ BOOST_AUTO_TEST_CASE(crown_consensus_vote_validation_duplicate_and_filtering)
     const auto on_proposal = engine.ReceiveProposal(proposal, true);
     BOOST_REQUIRE_EQUAL(VoteActions(on_proposal).size(), 1U);
     BOOST_CHECK(VoteActions(on_proposal).front().block_id == x);
+    BOOST_CHECK(!engine.MakeLocalVote(VoteType::PREVOTE, y));
 
     const Vote b_prevote_x = MakeSignedVote("validator-b", VoteType::PREVOTE, TEST_HEIGHT, 0, x);
     BOOST_CHECK(engine.ReceiveVote(b_prevote_x).empty());
@@ -456,8 +459,6 @@ BOOST_AUTO_TEST_CASE(crown_consensus_vote_validation_duplicate_and_filtering)
     const auto after_c = engine.ReceiveVote(c_prevote_x);
     BOOST_CHECK(after_c.empty());
 
-    const auto explicit_guard_vote = engine.MakeLocalVote(VoteType::PREVOTE, y);
-    BOOST_CHECK(!explicit_guard_vote);
 }
 
 BOOST_AUTO_TEST_CASE(crown_consensus_prevote_nil_and_precommit_nil_do_not_commit)
