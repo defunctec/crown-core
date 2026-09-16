@@ -1,5 +1,10 @@
+// Copyright (c) 2026-present The Crown developers
+// Distributed under the MIT software license, see the accompanying
+// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+
 #include <crown/options.h>
 #include <crown/validator.h>
+#include <chainparams.h>
 #include <init.h>
 #include <test/util/setup_common.h>
 #include <util/result.h>
@@ -83,13 +88,13 @@ BOOST_AUTO_TEST_CASE(crown_runtime_options)
         "-crownvalidatorprivkey=0000000000000000000000000000000000000000000000000000000000000001",
     });
     crown_params = CreateChainParams(validator_args, ChainType::CROWN);
-    runtime = crown::InitializeRuntimeOptions(validator_args, *crown_params);
-    BOOST_REQUIRE(runtime);
-    BOOST_REQUIRE(runtime->local_validator.has_value());
-    BOOST_CHECK(runtime->validator);
-    BOOST_CHECK_EQUAL(runtime->local_validator->id, "validator-a");
-    BOOST_CHECK_EQUAL(HexStr(runtime->local_validator->consensus_public_key), "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798");
-    BOOST_CHECK_EQUAL(runtime->local_validator->voting_power, 25);
+    auto validator_runtime = crown::InitializeRuntimeOptions(validator_args, *crown_params);
+    BOOST_REQUIRE(validator_runtime);
+    BOOST_REQUIRE(validator_runtime->local_validator.has_value());
+    BOOST_CHECK(validator_runtime->validator);
+    BOOST_CHECK_EQUAL(validator_runtime->local_validator->id, "validator-a");
+    BOOST_CHECK_EQUAL(HexStr(validator_runtime->local_validator->consensus_public_key), "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798");
+    BOOST_CHECK_EQUAL(validator_runtime->local_validator->voting_power, 25);
 }
 
 BOOST_AUTO_TEST_CASE(crown_invalid_validator_options)
@@ -106,9 +111,9 @@ BOOST_AUTO_TEST_CASE(crown_invalid_validator_options)
         "-crownvalidatorid=validator-a",
         "-crownvalidatorprivkey=0000000000000000000000000000000000000000000000000000000000000001",
     });
-    validation = crown::ValidateOptions(wrong_chain_args, ChainType::REGTEST);
-    BOOST_CHECK(!validation);
-    BOOST_CHECK_NE(util::ErrorString(validation).original.find("only supported on the experimental crown chain"), std::string::npos);
+    auto wrong_chain_validation = crown::ValidateOptions(wrong_chain_args, ChainType::REGTEST);
+    BOOST_CHECK(!wrong_chain_validation);
+    BOOST_CHECK_NE(util::ErrorString(wrong_chain_validation).original.find("only supported on the experimental crown chain"), std::string::npos);
 
     ArgsManager mismatched_key_args;
     ParseArgs(mismatched_key_args, {

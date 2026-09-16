@@ -1,3 +1,7 @@
+// Copyright (c) 2026-present The Crown developers
+// Distributed under the MIT software license, see the accompanying
+// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+
 #include <crown/options.h>
 
 #include <chainparams.h>
@@ -39,8 +43,8 @@ util::Result<void> ValidateValidatorKeyStructure(const ArgsManager& args)
 void SetupArgs(ArgsManager& argsman)
 {
     argsman.AddArg(ARG_VALIDATOR, "Enable static validator mode on the experimental crown chain (default: 0). When disabled, the node runs as a non-validator full node.", ArgsManager::ALLOW_ANY | ArgsManager::NETWORK_ONLY, OptionsCategory::CHAINPARAMS);
-    argsman.AddArg(ARG_VALIDATOR_ID "=<id>", "Static validator identifier for the experimental crown chain (validator-a, validator-b, validator-c, validator-d). Requires -crownvalidator=1.", ArgsManager::ALLOW_ANY | ArgsManager::DISALLOW_NEGATION | ArgsManager::NETWORK_ONLY, OptionsCategory::CHAINPARAMS);
-    argsman.AddArg(ARG_VALIDATOR_PRIVKEY "=<hex>", "32-byte hex validator private key for the experimental crown chain. TEST ONLY, PUBLICLY KNOWN, NEVER USE FOR MAINNET. Requires -crownvalidator=1.", ArgsManager::ALLOW_ANY | ArgsManager::DISALLOW_NEGATION | ArgsManager::NETWORK_ONLY | ArgsManager::SENSITIVE, OptionsCategory::CHAINPARAMS);
+    argsman.AddArg(std::string{ARG_VALIDATOR_ID} + "=<id>", "Static validator identifier for the experimental crown chain (validator-a, validator-b, validator-c, validator-d). Requires -crownvalidator=1.", ArgsManager::ALLOW_ANY | ArgsManager::DISALLOW_NEGATION | ArgsManager::NETWORK_ONLY, OptionsCategory::CHAINPARAMS);
+    argsman.AddArg(std::string{ARG_VALIDATOR_PRIVKEY} + "=<hex>", "32-byte hex validator private key for the experimental crown chain. TEST ONLY, PUBLICLY KNOWN, NEVER USE FOR MAINNET. Requires -crownvalidator=1.", ArgsManager::ALLOW_ANY | ArgsManager::DISALLOW_NEGATION | ArgsManager::NETWORK_ONLY | ArgsManager::SENSITIVE, OptionsCategory::CHAINPARAMS);
 }
 
 util::Result<void> ValidateOptions(const ArgsManager& args, const ChainType chain)

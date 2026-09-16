@@ -5,7 +5,6 @@
 """Basic startup coverage for the Crown successor Phase 1 scaffold."""
 
 from test_framework.test_framework import BitcoinTestFramework
-from test_framework.test_node import ErrorMatch
 from test_framework.util import assert_equal
 
 VALIDATOR_A_KEY = "0000000000000000000000000000000000000000000000000000000000000001"
@@ -31,11 +30,11 @@ class CrownPhase1Test(BitcoinTestFramework):
 
         node.assert_start_raises_init_error(
             extra_args=["-crownvalidator=1"],
-            expected_msg="Crown validator mode requires both -crownvalidatorid and -crownvalidatorprivkey.",
+            expected_msg="Error: Crown validator mode requires both -crownvalidatorid and -crownvalidatorprivkey.",
         )
         node.assert_start_raises_init_error(
             extra_args=["-crownvalidatorid=validator-a"],
-            expected_msg="Crown validator identity and key options require -crownvalidator=1.",
+            expected_msg="Error: Crown validator identity and key options require -crownvalidator=1.",
         )
         node.assert_start_raises_init_error(
             extra_args=[
@@ -43,8 +42,7 @@ class CrownPhase1Test(BitcoinTestFramework):
                 "-crownvalidatorid=validator-a",
                 f"-crownvalidatorprivkey={VALIDATOR_B_KEY}",
             ],
-            expected_msg="Configured Crown validator private key does not match validator-a.",
-            match=ErrorMatch.FULL_TEXT,
+            expected_msg="Error: Configured Crown validator private key does not match validator-a.",
         )
 
         self.start_node(0, extra_args=[
