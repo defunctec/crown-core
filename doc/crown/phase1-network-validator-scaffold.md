@@ -89,11 +89,58 @@ They are the fixed 32-byte hex scalars `1`, `2`, `3`, and `4`, mapped to validat
 
 ## Phase 1 patch surface
 
-The intended patch surface is:
+Phase 1 uses two kinds of changes:
 
-- `src/crown/*` for Crown-specific validator and option logic
-- chain-selection plumbing in `src/util/chaintype.*`, `src/chainparamsbase.*`, `src/chainparams.cpp`, and `src/kernel/chainparams.*`
-- small startup hooks in `src/init.cpp`
-- targeted test updates plus new Crown unit/functional coverage
+- new Crown-owned files under `src/crown/`, `src/test/crown_tests.cpp`, and `test/functional/feature_crown_phase1.py`
+- narrow edits to existing upstream Bitcoin Core files so the new chain can be selected, started, displayed, and tested
 
 No Bitcoin PoW or chain-selection consensus code is disabled or redefined.
+
+### New Crown-owned files
+
+| File | Reason | Classification | Permanence | Merge risk |
+| --- | --- | --- | --- | --- |
+| `src/crown/options.h` | Declares Crown runtime options and local validator metadata. | Isolated Crown module | Intended long-term home for Crown node-mode state. | Low |
+| `src/crown/options.cpp` | Registers Crown validator args, performs early structural validation, and performs ECC-safe runtime initialization after Bitcoin startup reaches a safe stage. | Isolated Crown module | Likely permanent, though later phases may add fields or split responsibilities. | Low |
+| `src/crown/validator.h` | Declares the static validator model and quorum helpers. | Isolated Crown module | Likely permanent until dynamic validator sets replace the static scaffold. | Low |
+| `src/crown/validator.cpp` | Defines the four static validators, test-only keys, key decoding, and exact quorum math. | Isolated Crown module | Phase 1 scaffold expected to evolve in later consensus phases. | Low |
+| `src/test/crown_tests.cpp` | Adds unit coverage for validator math, option validation, and ECC-safe runtime initialization. | New Crown-specific test | Test-only and expected to remain as coverage expands. | Low |
+| `test/functional/feature_crown_phase1.py` | Adds startup and configuration coverage for the experimental Crown chain. | New Crown-specific functional test | Test-only and expected to remain as later phases add behavior. | Low |
+| `doc/crown/phase1-network-validator-scaffold.md` | Documents Phase 1 scope, lifecycle, and patch surface. | Crown documentation | Permanent documentation that should evolve with later phases. | Low |
+
+### Existing upstream Bitcoin files modified in Phase 1
+
+| File | Reason | Classification | Permanence | Merge risk |
+| --- | --- | --- | --- | --- |
+| `src/CMakeLists.txt` | Links the new `src/crown` implementation into `bitcoin_common`. | Build wiring | Permanent while Crown code remains in-tree. | Low |
+| `src/bitcoin-cli.cpp` | Exposes Crown-specific RPC port defaults and chain name text for the existing CLI network-selection surface. | CLI chain identity plumbing | Permanent unless the Crown chain is removed or CLI chain handling is redesigned upstream. | Low |
+| `src/chainparams.cpp` | Extends the top-level chain factory switch so `ChainType::CROWN` resolves to the new kernel chain params. | Chain factory hook | Permanent core hook for any dedicated Crown chain. | Low |
+| `src/chainparamsbase.cpp` | Adds `-crown` base-chain selection and the Crown RPC/datadir defaults. | Base chain selection hook | Permanent while a dedicated Crown chain exists. | Low |
+| `src/chainparamsbase.h` | Adds `crown` to the advertised chain-name list. | Public chain-selection constant | Permanent while a dedicated Crown chain exists. | Low |
+| `src/common/args.cpp` | Teaches generic argument parsing about the new Crown config section and conflict checks with other chain selectors. | Shared argument parser hook | Permanent while `-crown` exists. | Medium |
+| `src/init.cpp` | Registers Crown server args, surfaces Crown defaults in help text, runs early non-ECC validation, and initializes Crown runtime state after ECC is ready. | Node startup lifecycle hook | Permanent entry point, though later phases may expand the runtime work done here. | Medium |
+| `src/kernel/chainparams.cpp` | Defines the experimental Crown network identity, regtest-like PoW parameters, genesis choice, ports, message magic, and address HRP. | Core chain-identity definition | Permanent for the dedicated Crown chain, though values may still evolve during PoC work. | Medium |
+| `src/kernel/chainparams.h` | Declares the Crown chain-param constructor/factory surface. | Chain-params interface hook | Permanent while the dedicated Crown chain exists. | Low |
+| `src/node/context.cpp` | Pulls in the Crown runtime type so node context lifetime can own it. | Runtime state plumbing | Permanent while node context carries Crown state. | Low |
+| `src/node/context.h` | Adds `node.crown` storage for post-ECC Crown runtime options. | Runtime state plumbing | Permanent while later phases need Crown runtime state attached to the node. | Medium |
+| `src/qt/guiconstants.h` | Adds the Crown-specific Qt application name constant. | Qt identity plumbing | Permanent while Qt supports the Crown chain. | Low |
+| `src/qt/guiutil.cpp` | Adds a Crown dummy address placeholder used by the Qt address widget validation path. | Qt address-format plumbing | Permanent while Qt supports Crown addresses. | Low |
+| `src/qt/guiutil.h` | Exposes the chain-specific Qt dummy-address helper for direct test coverage. | Qt testability hook | Probably permanent unless Qt helper structure changes upstream. | Low |
+| `src/qt/networkstyle.cpp` | Adds a Crown network style entry so the Qt UI can distinguish the network. | Qt identity plumbing | Permanent while Qt supports the Crown chain. | Low |
+| `src/qt/test/uritests.cpp` | Adds Qt coverage for the Crown dummy-address invariant. | Existing Qt test expansion | Test-only and likely permanent. | Low |
+| `src/qt/test/uritests.h` | Declares the added Crown Qt test slot. | Existing Qt test expansion | Test-only and likely permanent. | Low |
+| `src/test/CMakeLists.txt` | Registers the new Crown unit test file with the CMake test binary. | Test build wiring | Permanent while Crown unit tests exist. | Low |
+| `src/test/argsman_tests.cpp` | Extends chain-selection tests for `-crown` and updates the chain-merge golden hash after adding a new network selector. | Existing unit-test expansion | Test-only and likely permanent. | Medium |
+| `src/test/key_io_tests.cpp` | Verifies invalid key and destination handling still behaves correctly on the Crown chain alongside the existing networks. | Existing unit-test expansion | Test-only and likely permanent. | Low |
+| `src/test/pow_tests.cpp` | Adds sanity coverage that the new chain params remain compatible with existing PoW assumptions. | Existing unit-test expansion | Test-only and likely permanent. | Low |
+| `src/test/versionbits_tests.cpp` | Extends chain iteration coverage to include the Crown chain. | Existing unit-test expansion | Test-only and likely permanent. | Low |
+| `src/util/chaintype.cpp` | Maps `ChainType::CROWN` to and from its string form. | Shared chain identity plumbing | Permanent while the dedicated Crown chain exists. | Low |
+| `src/util/chaintype.h` | Declares the new `ChainType::CROWN` enum member. | Shared chain identity plumbing | Permanent while the dedicated Crown chain exists. | Low |
+| `test/functional/test_framework/messages.py` | Adds Crown message magic so the functional harness can identify the experimental network. | Functional test harness hook | Permanent while functional tests start Crown nodes. | Low |
+| `test/functional/test_runner.py` | Registers the new Crown Phase 1 functional test in the upstream runner list. | Functional test harness hook | Test-only and likely permanent. | Low |
+
+### Permanence and merge-risk interpretation
+
+- **Low merge risk**: localized enum/string/help/test wiring that is unlikely to conflict beyond routine upstream churn.
+- **Medium merge risk**: shared startup, argument parsing, or chain-parameter files that Bitcoin Core regularly changes upstream and will need careful rebasing.
+- No file in Phase 1 should be considered high-risk because PoW, validation, chainwork, and best-chain selection semantics were intentionally left unchanged.
