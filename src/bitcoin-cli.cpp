@@ -11,7 +11,6 @@
 #include <common/system.h>
 #include <compat/compat.h>
 #include <compat/stdin.h>
-#include <crown/options.h>
 #include <policy/feerate.h>
 #include <rpc/client.h>
 #include <rpc/mining.h>
